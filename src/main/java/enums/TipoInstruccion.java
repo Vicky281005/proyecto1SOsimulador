@@ -1,5 +1,9 @@
 package enums;
 
+/**
+ * Tipos de instrucción que puede contener el programa de un proceso.
+ * Cada instrucción ocupa exactamente un ciclo de reloj.
+ */
 public enum TipoInstruccion {
     CPU("Instrucción CPU"),
     READ_IO("Lectura E/S"),

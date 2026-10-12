@@ -1,5 +1,10 @@
 package enums;
 
+/**
+ * Políticas de planificación que puede usar un computador de ÁvilaOS.
+ * Cada computador tiene su propia política y puede cambiarla en tiempo de
+ * ejecución de forma independiente de los demás.
+ */
 public enum PoliticaPlanificacion {
     FCFS("First Come First Served (FCFS)"),
     ROUND_ROBIN("Round Robin (RR)"),
