@@ -1,5 +1,12 @@
 package enums;
 
+/**
+ * Identifica el semáforo asociado a un buffer de capacidad limitada
+ * (espacios vacíos, elementos llenos o mutex).
+ * Indica sobre cuál semáforo opera una instrucción o en cuál quedó esperando
+ * un proceso. No confundirse con { MotivoBloqueo}, que describe la causa
+ * del bloqueo.
+ */
 public enum SemaforoBuffer {
     NINGUNO("Ninguno"),
     VACIOS("Semáforo Espacios Vacíos"),

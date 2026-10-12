@@ -1,5 +1,10 @@
 package enums;
 
+/**
+ * Modo de ejecución del procesador.
+ * USUARIO corresponde a los programas de usuario y KERNEL a las operaciones
+ * del sistema operativo (semWait, semSignal, acceso a buffers, etc.).
+ */
 public enum ModoCPU {
     USUARIO("Usuario"),
     KERNEL("Kernel");

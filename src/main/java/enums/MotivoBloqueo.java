@@ -1,6 +1,11 @@
 package enums;
 
-/** Causa por la que un proceso se encuentra en estado BLOQUEADO. */
+/**
+ * Causa por la que un proceso se encuentra en estado BLOQUEADO.
+ * A diferencia de { SemaforoBuffer}, que identifica el semáforo, este
+ * enum describe el motivo: esperar espacio, elementos, mutex, latencia de red
+ * o una operación de E/S.
+ */
 public enum MotivoBloqueo {
     NINGUNO("Ninguno"),
     SEMAFORO_VACIO("Esperando semáforo (Buffer vacío)"),
