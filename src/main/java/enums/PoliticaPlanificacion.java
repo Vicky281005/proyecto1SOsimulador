@@ -3,7 +3,8 @@ package enums;
 public enum PoliticaPlanificacion {
     FCFS("First Come First Served (FCFS)"),
     ROUND_ROBIN("Round Robin (RR)"),
-    EDF("Earliest Deadline First (EDF)");
+    EDF("Earliest Deadline First (EDF)"),
+    PRIORIDAD("Prioridades Apropiativas");
 
     private final String etiqueta;
 
