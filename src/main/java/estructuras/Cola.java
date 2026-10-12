@@ -45,6 +45,35 @@ public class Cola<T> {
         return this.frente.getDato();
     }
 
+    // Observa el elemento en una posicion sin alterar la cola
+    public T obtener(int indice) {
+        if (indice < 0 || indice >= tamano) {
+            return null;
+        }
+        Nodo<T> actual = this.frente;
+        for (int i = 0; i < indice; i++) {
+            actual = actual.getSiguiente();
+        }
+        return actual.getDato();
+    }
+
+    public boolean contiene(T dato) {
+        Nodo<T> actual = this.frente;
+        while (actual != null) {
+            if (sonIguales(actual.getDato(), dato)) {
+                return true;
+            }
+            actual = actual.getSiguiente();
+        }
+        return false;
+    }
+
+    public void vaciar() {
+        this.frente = null;
+        this.fin = null;
+        this.tamano = 0;
+    }
+
     // Verifica si la cola esta vacia
     public boolean estaVacia() {
         return this.frente == null;
@@ -53,5 +82,28 @@ public class Cola<T> {
     // Obtiene la cantidad de elementos en la cola
     public int getTamano() {
         return this.tamano;
+    }
+
+    // Iterador propio para que la GUI recorra la cola en un solo paso O(n)
+    public Iterador<T> iterador() {
+        return new Iterador<T>() {
+            private Nodo<T> actual = frente;
+
+            @Override
+            public boolean haySiguiente() {
+                return actual != null;
+            }
+
+            @Override
+            public T siguiente() {
+                T dato = actual.getDato();
+                actual = actual.getSiguiente();
+                return dato;
+            }
+        };
+    }
+
+    private boolean sonIguales(T a, T b) {
+        return (a == null) ? (b == null) : a.equals(b);
     }
 }
