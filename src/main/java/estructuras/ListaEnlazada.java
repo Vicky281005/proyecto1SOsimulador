@@ -35,4 +35,17 @@ public class ListaEnlazada<T> {
     public Nodo<T> getCabeza() {
         return cabeza;
     }
+    
+    
+    // Obtener el dato guardado en un indice especifico (0-indexed)
+    public T obtener(int indice) {
+        if (indice < 0 || indice >= tamano || cabeza == null) {
+            return null;
+        }
+        Nodo<T> actual = cabeza;
+        for (int i = 0; i < indice; i++) {
+            actual = actual.getSiguiente();
+        }
+        return actual.getDato(); // O el getter del dato en tu clase Nodo
+    }
 }
