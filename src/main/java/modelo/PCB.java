@@ -2,13 +2,15 @@ package modelo;
 
 import enums.EstadoProceso;
 import enums.MotivoBloqueo;
-import enums.SemaforoBuffer;
 import enums.TipoProceso;
 import estructuras.ListaEnlazada;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class PCB {
     private static final AtomicInteger generadorId = new AtomicInteger(1);
+
+    /** Valor usado mientras ÁvilaOS todavía no ha asignado el proceso a un computador. */
+    public static final int SIN_ASIGNAR = -1;
 
     // Atributos Principales
     private final int id;
@@ -24,7 +26,7 @@ public class PCB {
     private ListaEnlazada<Instruccion> programa;
 
     // Tiempos y Deadline Absoluto
-    private long deadlineAbsoluto;
+    private final long deadlineAbsoluto;
     private long tiempoRestante;
     private long tiempoEjecucionTotal;
 
@@ -34,7 +36,6 @@ public class PCB {
 
     // Sincronización y Bloqueo Fino
     private String bufferBloqueadoId;
-    private SemaforoBuffer semaforoBloqueado;
     private long ciclosBloqueoRestantes;
 
     // Configuración Inicial Productor / Consumidor (Metadatos)
@@ -67,7 +68,6 @@ public class PCB {
         this.deadlineAbsoluto = cicloActual + deadlineRelativo;
 
         this.bufferBloqueadoId = "";
-        this.semaforoBloqueado = SemaforoBuffer.NINGUNO;
         this.ciclosBloqueoRestantes = 0;
 
         // Metadatos de formulario Vista 1
@@ -83,7 +83,11 @@ public class PCB {
 
     // Método helper privado para unificar la carga de programa e inicialización de registros/métricas
     private void cargarProgramaEInicializar(ListaEnlazada<Instruccion> programa) {
-        this.programa = (programa != null) ? programa : new ListaEnlazada<>();
+        if (programa == null || programa.estaVacia()) {
+            throw new IllegalArgumentException("El programa de un proceso no puede ser nulo ni vacío.");
+        }
+        // Se copia el programa para evitar aliasing entre PCBs que compartan la misma lista.
+        this.programa = copiarPrograma(programa);
         this.tiempoRestante = this.programa.getTamano();
         this.tiempoEjecucionTotal = this.tiempoRestante;
         this.pc = 0;
@@ -95,6 +99,16 @@ public class PCB {
         this.ciclosCpuConsumidos = 0;
         this.tiempoBloqueadoAcumulado = 0;
         this.deadlineCumplido = true;
+    }
+
+    // Copia defensiva del programa. Las instrucciones son inmutables, por lo que
+    // basta con copiar la estructura (nodos) y no los objetos Instruccion.
+    private static ListaEnlazada<Instruccion> copiarPrograma(ListaEnlazada<Instruccion> original) {
+        ListaEnlazada<Instruccion> copia = new ListaEnlazada<>();
+        for (int i = 0; i < original.getTamano(); i++) {
+            copia.agregar(original.obtener(i));
+        }
+        return copia;
     }
 
     // Obtener instrucción actual con validación de rango
@@ -115,24 +129,66 @@ public class PCB {
             this.ciclosCpuConsumidos++;
             this.pc++;
             this.mar++;
+            if (this.tiempoRestante == 0) {
+                // El proceso terminó: cumple el deadline si lo hizo dentro del plazo.
+                this.deadlineCumplido = cicloActual <= this.deadlineAbsoluto;
+            }
         }
     }
 
-    // Verificación exacta de Deadline (>=)
-    public void verificarDeadline(long cicloActual) {
-        if (cicloActual >= this.deadlineAbsoluto && this.tiempoRestante > 0) {
+    /**
+     * Marca el incumplimiento del deadline si el proceso sigue en ejecución
+     * (le quedan instrucciones) al alcanzar o superar su deadline absoluto.
+     *
+     * @return true si el proceso venció su deadline y debe ser terminado por el sistema.
+     */
+    public boolean verificarDeadline(long cicloActual) {
+        if (this.tiempoRestante > 0 && cicloActual >= this.deadlineAbsoluto) {
             this.deadlineCumplido = false;
+            return true;
         }
+        return false;
     }
 
     public void incrementarTiempoBloqueado() {
         this.tiempoBloqueadoAcumulado++;
     }
 
+    /**
+     * Coloca al proceso en estado BLOQUEADO dejando registrados de forma
+     * coherente el motivo y el buffer implicado. Centraliza la transición
+     * para no depender del orden en que el llamador invoque los setters.
+     */
+    public void bloquear(MotivoBloqueo motivo, String bufferId) {
+        this.estado = EstadoProceso.BLOQUEADO;
+        this.motivoBloqueo = (motivo != null) ? motivo : MotivoBloqueo.NINGUNO;
+        this.bufferBloqueadoId = (bufferId != null) ? bufferId : "";
+    }
+
+    /**
+     * Asigna el proceso a un computador. Solo se permite mientras el proceso
+     * no haya sido admitido (estado NUEVO), de modo que un proceso ya aceptado
+     * no pueda migrar de computador.
+     */
+    public void asignarComputador(int computadorAsignado) {
+        if (this.estado != EstadoProceso.NUEVO) {
+            throw new IllegalStateException("Un proceso ya admitido no puede cambiar de computador.");
+        }
+        this.computadorAsignado = computadorAsignado;
+    }
+
+    /**
+     * Reinicia el contador global de IDs. Pensado para reiniciar la simulación
+     * desde cero; no debe invocarse mientras existan procesos vivos.
+     */
+    public static void reiniciarGeneradorId() {
+        generadorId.set(1);
+    }
+
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
-        if (o == null || getClass() != o.getClass()) return false;
+        if (!(o instanceof PCB)) return false;
         PCB pcb = (PCB) o;
         return id == pcb.id;
     }
@@ -148,7 +204,6 @@ public class PCB {
     public void setNombre(String nombre) { this.nombre = nombre; }
     
     public int getComputadorAsignado() { return computadorAsignado; }
-    public void setComputadorAsignado(int computadorAsignado) { this.computadorAsignado = computadorAsignado; }
     
     public EstadoProceso getEstado() { return estado; }
     public void setEstado(EstadoProceso estado) { 
@@ -156,7 +211,6 @@ public class PCB {
         if (estado != EstadoProceso.BLOQUEADO) {
             this.motivoBloqueo = MotivoBloqueo.NINGUNO;
             this.bufferBloqueadoId = "";
-            this.semaforoBloqueado = SemaforoBuffer.NINGUNO;
             this.ciclosBloqueoRestantes = 0;
         }
     }
@@ -172,27 +226,29 @@ public class PCB {
     public long getDeadlineAbsoluto() { return deadlineAbsoluto; }
     
     public long getTiempoRestante() { return tiempoRestante; }
-    public void setTiempoRestante(long tiempoRestante) { this.tiempoRestante = tiempoRestante; }
     
     public long getTiempoEjecucionTotal() { return tiempoEjecucionTotal; }
     
     public ListaEnlazada<Instruccion> getPrograma() { return programa; }
     
+    /**
+     * Reemplaza el programa del proceso. Solo se permite mientras el proceso
+     * no haya iniciado su ejecución, para no alterar su estado ni sus métricas.
+     */
     public void setPrograma(ListaEnlazada<Instruccion> programa) { 
+        if (this.estado != EstadoProceso.NUEVO || this.cicloInicio != -1) {
+            throw new IllegalStateException(
+                    "No se puede reemplazar el programa de un proceso que ya inició ejecución.");
+        }
         cargarProgramaEInicializar(programa);
     }
 
     public int getPc() { return pc; }
-    public void setPc(int pc) { this.pc = pc; }
     
     public int getMar() { return mar; }
-    public void setMar(int mar) { this.mar = mar; }
 
     public String getBufferBloqueadoId() { return bufferBloqueadoId; }
     public void setBufferBloqueadoId(String bufferBloqueadoId) { this.bufferBloqueadoId = bufferBloqueadoId; }
-
-    public SemaforoBuffer getSemaforoBloqueado() { return semaforoBloqueado; }
-    public void setSemaforoBloqueado(SemaforoBuffer semaforoBloqueado) { this.semaforoBloqueado = semaforoBloqueado; }
 
     public long getCiclosBloqueoRestantes() { return ciclosBloqueoRestantes; }
     public void setCiclosBloqueoRestantes(long ciclosBloqueoRestantes) { this.ciclosBloqueoRestantes = ciclosBloqueoRestantes; }
