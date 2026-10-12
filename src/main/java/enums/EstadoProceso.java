@@ -1,11 +1,24 @@
-package enums;
-
 public enum EstadoProceso {
-    NUEVO,
-    LISTO,
-    EJECUCION,
-    BLOQUEADO,
-    TERMINADO
+    NUEVO("Nuevo"),
+    LISTO("Listo"),
+    EJECUCION("Ejecución"),
+    BLOQUEADO("Bloqueado"),
+    TERMINADO("Terminado");
+
+    private final String etiqueta;
+
+    EstadoProceso(String etiqueta) {
+        this.etiqueta = etiqueta;
+    }
+
+    public String getEtiqueta() {
+        return etiqueta;
+    }
+
+    @Override
+    public String toString() {
+        return etiqueta;
+    }
 }
 
 

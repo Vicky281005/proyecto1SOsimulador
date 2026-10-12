@@ -1,7 +1,22 @@
 package enums;
 
 public enum PoliticaPlanificacion {
-    FCFS,
-    ROUND_ROBIN,
-    EDF
+    FCFS("First Come First Served (FCFS)"),
+    ROUND_ROBIN("Round Robin (RR)"),
+    EDF("Earliest Deadline First (EDF)");
+
+    private final String etiqueta;
+
+    PoliticaPlanificacion(String etiqueta) {
+        this.etiqueta = etiqueta;
+    }
+
+    public String getEtiqueta() {
+        return etiqueta;
+    }
+
+    @Override
+    public String toString() {
+        return etiqueta;
+    }
 }
