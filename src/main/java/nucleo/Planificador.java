@@ -1,0 +1,82 @@
+package nucleo;
+
+import estructuras.Iterador;
+import estructuras.ListaEnlazada;
+import modelo.PCB;
+import planificacion.AlgoritmoPlanificacion;
+
+/**
+ * Planificador de un computador de ÁvilaOS.
+ *
+ * <p>Es dueño de la cola de listos y de la política de planificación. La
+ * política se inyecta por constructor (y puede cambiarse en tiempo de
+ * ejecución), de modo que agregar un algoritmo nuevo no obliga a modificar
+ * esta clase.</p>
+ */
+public class Planificador {
+
+    private final ListaEnlazada<PCB> listos;
+    private AlgoritmoPlanificacion politica;
+
+    public Planificador(AlgoritmoPlanificacion politica) {
+        if (politica == null) {
+            throw new IllegalArgumentException("La política de planificación no puede ser nula.");
+        }
+        this.listos = new ListaEnlazada<>();
+        this.politica = politica;
+    }
+
+    /**
+     * Encola un proceso en la cola de listos respetando el orden que exige la
+     * política actual.
+     *
+     * @param proceso proceso que pasa a estar listo.
+     */
+    public void encolarListo(PCB proceso) {
+        politica.encolar(listos, proceso);
+    }
+
+    /**
+     * Selecciona y extrae de la cola el siguiente proceso a ejecutar.
+     *
+     * @param cicloActual ciclo de reloj en el que se realiza la selección.
+     * @return el proceso elegido, o {@code null} si no hay listos.
+     */
+    public PCB seleccionarSiguiente(long cicloActual) {
+        PCB siguiente = politica.seleccionar(listos, cicloActual);
+        politica.reordenar(listos, cicloActual);
+        return siguiente;
+    }
+
+    /** Indica si no hay ningún proceso listo. */
+    public boolean estaVacio() {
+        return listos.estaVacia();
+    }
+
+    /** Cantidad de procesos en la cola de listos. */
+    public int getCantidadListos() {
+        return listos.getTamano();
+    }
+
+    /** Política de planificación activa. */
+    public AlgoritmoPlanificacion getPolitica() {
+        return politica;
+    }
+
+    /**
+     * Cambia la política de planificación en tiempo de ejecución.
+     *
+     * @param politica nueva política.
+     */
+    public void setPolitica(AlgoritmoPlanificacion politica) {
+        if (politica == null) {
+            throw new IllegalArgumentException("La política de planificación no puede ser nula.");
+        }
+        this.politica = politica;
+    }
+
+    /** Iterador sobre la cola de listos, para observarla sin exponer la lista interna. */
+    public Iterador<PCB> iteradorListos() {
+        return listos.iterador();
+    }
+}
