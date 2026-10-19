@@ -3,28 +3,24 @@ package com.mycompany.proyecto1sosimulador;
 import enums.PoliticaPlanificacion;
 import enums.TipoInstruccion;
 import enums.TipoProceso;
-import estructuras.Iterador;
 import estructuras.ListaEnlazada;
 import modelo.Instruccion;
 import modelo.PCB;
 import nucleo.Computador;
 import planificacion.FabricaPoliticas;
+import simulacion.ReporteSimulacion;
 import simulacion.Simulador;
 
 /**
  * Punto de entrada de ÁvilaOS.
  *
  * <p>Arma un escenario de demostración con varios computadores (cada uno con
- * una política distinta), carga procesos y corre la simulación con el
- * {@link Simulador}, mostrando por consola el resultado de cada computador.</p>
+ * una política distinta), carga procesos, corre la simulación con el
+ * {@link Simulador} y muestra el reporte con {@link ReporteSimulacion}.</p>
  */
 public class Proyecto1SOsimulador {
 
     public static void main(String[] args) {
-        System.out.println("=================================================");
-        System.out.println(" ÁvilaOS - Demostración de simulación");
-        System.out.println("=================================================");
-
         Simulador simulador = new Simulador();
 
         Computador pc1 = new Computador(1, "PC-1", 1024,
@@ -52,46 +48,8 @@ public class Proyecto1SOsimulador {
         simulador.cargarProceso(proceso("P7", 1, 4, 200, 30, pc3.getId()));
         simulador.cargarProceso(proceso("P8", 2, 3, 200, 30, pc3.getId()));
 
-        long ciclos = simulador.ejecutar();
-
-        Iterador<Computador> computadores = simulador.iteradorComputadores();
-        int terminados = 0;
-        while (computadores.haySiguiente()) {
-            Computador computador = computadores.siguiente();
-            imprimirComputador(computador);
-            terminados += computador.getCantidadTerminados();
-        }
-
-        System.out.println();
-        System.out.println("-------------------------------------------------");
-        System.out.println(" Ciclos totales de simulación : " + ciclos);
-        System.out.println(" Procesos terminados          : " + terminados);
-        System.out.println(" Simulación terminada         : " + (simulador.isTerminada() ? "sí" : "no"));
-        System.out.println(" Límite de seguridad alcanzado: " + (simulador.isLimiteAlcanzado() ? "SÍ" : "no"));
-        System.out.println("-------------------------------------------------");
-    }
-
-    private static void imprimirComputador(Computador computador) {
-        System.out.println();
-        System.out.printf("%s  [%s]  RAM %d KB%n",
-                computador.getNombre(),
-                computador.getPlanificador().getPolitica().getNombre(),
-                computador.getMemoriaTotal());
-
-        Iterador<PCB> terminados = computador.iteradorTerminados();
-        if (!terminados.haySiguiente()) {
-            System.out.println("   (sin procesos terminados)");
-            return;
-        }
-        while (terminados.haySiguiente()) {
-            PCB proceso = terminados.siguiente();
-            System.out.printf("   %-4s ciclos %d-%d   CPU=%d   deadline: %s%n",
-                    proceso.getNombre(),
-                    proceso.getCicloInicio(),
-                    proceso.getCicloFin(),
-                    proceso.getCiclosCpuConsumidos(),
-                    proceso.isDeadlineCumplido() ? "cumplido" : "INCUMPLIDO");
-        }
+        simulador.ejecutar();
+        new ReporteSimulacion(simulador).imprimir();
     }
 
     /**
