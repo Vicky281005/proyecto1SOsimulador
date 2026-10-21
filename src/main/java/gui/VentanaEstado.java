@@ -45,6 +45,8 @@ public class VentanaEstado extends JFrame {
     private final JButton btnIniciar = new JButton("Iniciar");
     private final JButton btnPausa = new JButton("Pausar");
     private final JButton btnDetener = new JButton("Detener");
+    private final JButton btnCrear = new JButton("Crear proceso…");
+    private VentanaCrearProceso ventanaCrear;
     private final JSlider deslizador;
 
     private boolean iniciada;
@@ -78,6 +80,7 @@ public class VentanaEstado extends JFrame {
         barra.add(btnIniciar);
         barra.add(btnPausa);
         barra.add(btnDetener);
+        barra.add(btnCrear);
         barra.add(new JLabel("Duración del ciclo:"));
         barra.add(deslizador);
         barra.add(lblDuracion);
@@ -86,6 +89,7 @@ public class VentanaEstado extends JFrame {
         btnIniciar.addActionListener(e -> iniciar());
         btnPausa.addActionListener(e -> pausarOReanudar());
         btnDetener.addActionListener(e -> detener());
+        btnCrear.addActionListener(e -> abrirCrearProceso());
 
         setLayout(new BorderLayout(6, 6));
         add(barra, BorderLayout.NORTH);
@@ -114,6 +118,15 @@ public class VentanaEstado extends JFrame {
         iniciada = true;
         simulador.iniciar();
         refrescar();
+    }
+
+    /** Abre la Vista 1 (formulario de creación de procesos); reutiliza la misma ventana. */
+    private void abrirCrearProceso() {
+        if (ventanaCrear == null) {
+            ventanaCrear = new VentanaCrearProceso(this, simulador);
+        }
+        ventanaCrear.setVisible(true);
+        ventanaCrear.toFront();
     }
 
     private void pausarOReanudar() {
@@ -161,6 +174,7 @@ public class VentanaEstado extends JFrame {
         btnPausa.setEnabled(iniciada && !detenida);
         btnPausa.setText(simulador.estaPausada() ? "Reanudar" : "Pausar");
         btnDetener.setEnabled(!detenida);
+        btnCrear.setEnabled(!detenida);
     }
 
     private String textoEstado() {
