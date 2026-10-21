@@ -10,4 +10,12 @@
         <maven.compiler.release>21</maven.compiler.release>
         <exec.mainClass>com.mycompany.proyecto1sosimulador.Proyecto1SOsimulador</exec.mainClass>
     </properties>
+    <dependencies>
+        <!-- Gráficas (requisito 8 del enunciado). Única librería externa permitida junto con JSON. -->
+        <dependency>
+            <groupId>org.jfree</groupId>
+            <artifactId>jfreechart</artifactId>
+            <version>1.5.5</version>
+        </dependency>
+    </dependencies>
 </project>

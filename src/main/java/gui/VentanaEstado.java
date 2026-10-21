@@ -47,6 +47,8 @@ public class VentanaEstado extends JFrame {
     private final JButton btnDetener = new JButton("Detener");
     private final JButton btnCrear = new JButton("Crear proceso…");
     private VentanaCrearProceso ventanaCrear;
+    private final JButton btnGrafica = new JButton("Gráfica CPU");
+    private VentanaGrafica ventanaGrafica;
     private final JSlider deslizador;
 
     private boolean iniciada;
@@ -81,6 +83,7 @@ public class VentanaEstado extends JFrame {
         barra.add(btnPausa);
         barra.add(btnDetener);
         barra.add(btnCrear);
+        barra.add(btnGrafica);
         barra.add(new JLabel("Duración del ciclo:"));
         barra.add(deslizador);
         barra.add(lblDuracion);
@@ -90,6 +93,7 @@ public class VentanaEstado extends JFrame {
         btnPausa.addActionListener(e -> pausarOReanudar());
         btnDetener.addActionListener(e -> detener());
         btnCrear.addActionListener(e -> abrirCrearProceso());
+        btnGrafica.addActionListener(e -> abrirGrafica());
 
         setLayout(new BorderLayout(6, 6));
         add(barra, BorderLayout.NORTH);
@@ -127,6 +131,15 @@ public class VentanaEstado extends JFrame {
         }
         ventanaCrear.setVisible(true);
         ventanaCrear.toFront();
+    }
+
+    /** Abre la gráfica de utilización de CPU; reutiliza la misma ventana. */
+    private void abrirGrafica() {
+        if (ventanaGrafica == null) {
+            ventanaGrafica = new VentanaGrafica(this, simulador);
+        }
+        ventanaGrafica.setVisible(true);
+        ventanaGrafica.toFront();
     }
 
     private void pausarOReanudar() {

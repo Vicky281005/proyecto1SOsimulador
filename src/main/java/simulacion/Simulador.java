@@ -80,6 +80,17 @@ public class Simulador {
     private boolean pausada;
     private Thread hiloSimulacion;
 
+    /** Utilización de CPU de cada computador, ciclo por ciclo (para la gráfica). */
+    private final HistorialUtilizacion historial = new HistorialUtilizacion();
+
+    /**
+     * Historial de utilización de CPU. Léalo siempre dentro de {@link #leerEstado(Runnable)}
+     * mientras la simulación corra en su hilo.
+     */
+    public HistorialUtilizacion getHistorialUtilizacion() {
+        return historial;
+    }
+
     public Simulador() {
         this(CICLOS_MAXIMOS_POR_DEFECTO);
     }
@@ -192,6 +203,7 @@ public class Simulador {
                 return PASO_LIMITE;
             }
             reloj.avanzarCiclo();
+            historial.registrarCiclo(reloj.getCicloActual(), computadores.iterador());
             return PASO_AVANZO;
         } finally {
             mutexEstado.release();
