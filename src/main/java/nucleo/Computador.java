@@ -7,6 +7,7 @@ import hardware.CPU;
 import hardware.ComponenteReloj;
 import modelo.PCB;
 import planificacion.AlgoritmoPlanificacion;
+import planificacion.RoundRobin;
 
 /**
  * Computador simulado de ÁvilaOS: el hardware (CPU) más su núcleo del sistema
@@ -75,14 +76,41 @@ public class Computador implements ComponenteReloj {
     @Override
     public void tick(long cicloActual) {
         admitir();
+
+        // Revisar deadlines y posibles desalos en todo el computador.
+        revisarDeadlines(cicloActual);
+        evaluarDesalojo(cicloActual);
+
         despachar(cicloActual);
 
         PCB enEjecucion = cpu.getProcesoActual();
         if (enEjecucion != null) {
-            cpu.tick(cicloActual);
-            if (enEjecucion.getTiempoRestante() == 0) {
-                terminar(enEjecucion, cicloActual);
+            // Revisar deadline antes de ejecutar la instrucción.
+            if (enEjecucion.verificarDeadline(cicloActual)) {
+                terminarPorDeadline(enEjecucion, cicloActual);
+                despachar(cicloActual);
+                enEjecucion = cpu.getProcesoActual();
             }
+        }
+
+        if (enEjecucion != null) {
+            cpu.tick(cicloActual);
+            // Tras ejecutar, volver a evaluar por si venció el deadline o agotó quantum.
+            enEjecucion = cpu.getProcesoActual();
+            if (enEjecucion != null) {
+                if (enEjecucion.verificarDeadline(cicloActual)) {
+                    terminarPorDeadline(enEjecucion, cicloActual);
+                    despachar(cicloActual);
+                } else if (enEjecucion.getTiempoRestante() == 0) {
+                    terminar(enEjecucion, cicloActual);
+                }
+            }
+        }
+
+        // Evaluar desalojo al final por quantum.
+        evaluarDesalojo(cicloActual);
+        if (cpu.estaOciosa()) {
+            despachar(cicloActual);
         }
     }
 
@@ -92,6 +120,11 @@ public class Computador implements ComponenteReloj {
         Iterador<PCB> iterador = nuevos.iterador();
         while (iterador.haySiguiente()) {
             PCB proceso = iterador.siguiente();
+            if (proceso.verificarDeadline(0) && proceso.getCicloInicio() == -1) {
+                // Ya vencido al momento de admitir (caso extremo).
+                admitidos.agregar(proceso);
+                continue;
+            }
             if (proceso.getMemoriaAsignada() <= memoriaDisponible) {
                 memoriaDisponible -= proceso.getMemoriaAsignada();
                 admitidos.agregar(proceso);
@@ -101,8 +134,14 @@ public class Computador implements ComponenteReloj {
         while (iteradorAdmitidos.haySiguiente()) {
             PCB proceso = iteradorAdmitidos.siguiente();
             nuevos.eliminar(proceso);
+            if (proceso.isDeadlineCumplido() == false && proceso.getTiempoRestante() > 0) {
+                // Ya marcado como vencido.
+                terminarPorDeadline(proceso, 0);
+                continue;
+            }
             proceso.setEstado(EstadoProceso.LISTO);
             planificador.encolarListo(proceso);
+            evaluarDesalojo(0);
         }
     }
 
@@ -115,17 +154,110 @@ public class Computador implements ComponenteReloj {
         if (siguiente == null) {
             return;
         }
+        if (siguiente.verificarDeadline(cicloActual)) {
+            terminarPorDeadline(siguiente, cicloActual);
+            despachar(cicloActual);
+            return;
+        }
         siguiente.setEstado(EstadoProceso.EJECUCION);
         cpu.cargarProceso(siguiente);
     }
 
     /** Cierra un proceso que agotó su programa: libera RAM y CPU. */
     private void terminar(PCB proceso, long cicloActual) {
+        if (proceso == null) {
+            return;
+        }
         proceso.setEstado(EstadoProceso.TERMINADO);
-        proceso.setCicloFin(cicloActual);
+        if (proceso.getCicloFin() <= 0) {
+            proceso.setCicloFin(cicloActual);
+        }
         memoriaDisponible += proceso.getMemoriaAsignada();
         cpu.liberar();
         terminados.agregar(proceso);
+    }
+
+    private void terminarPorDeadline(PCB proceso, long cicloActual) {
+        if (proceso == null) {
+            return;
+        }
+        proceso.setDeadlineCumplido(false);
+        proceso.setEstado(EstadoProceso.TERMINADO);
+        if (proceso.getCicloFin() <= 0) {
+            proceso.setCicloFin(cicloActual);
+        }
+        memoriaDisponible += proceso.getMemoriaAsignada();
+        if (cpu.getProcesoActual() == proceso) {
+            cpu.liberar();
+        }
+        terminados.agregar(proceso);
+    }
+
+    private void revisarDeadlines(long cicloActual) {
+        Iterador<PCB> it = planificador.iteradorListos();
+        while (it.haySiguiente()) {
+            PCB p = it.siguiente();
+            if (p.verificarDeadline(cicloActual) && p.getTiempoRestante() > 0) {
+                planificador.eliminarListo(p);
+                terminarPorDeadline(p, cicloActual);
+                break;
+            }
+        }
+    }
+
+    private void evaluarDesalojo(long cicloActual) {
+        PCB actual = cpu.getProcesoActual();
+        if (actual == null || planificador.estaVacio()) {
+            return;
+        }
+        if (!planificador.esApropiativa()) {
+            return;
+        }
+
+        if (planificador.getPolitica() instanceof RoundRobin rr) {
+            if (cpu.getCiclosProcesoActual() >= rr.getQuantum()) {
+                // Desalojar por quantum
+                cpu.liberar();
+                actual.setEstado(EstadoProceso.LISTO);
+                planificador.encolarListo(actual);
+                return;
+            }
+            return;
+        }
+
+        PCB candidato = planificador.peekSiguiente();
+        if (candidato == null) {
+            return;
+        }
+        // Comparar
+        String nombrePol = planificador.getPolitica().getNombre();
+        boolean desalojar = false;
+        if (nombrePol != null && nombrePol.toLowerCase().contains("prioridad")) {
+            // menor número = mayor prioridad
+            if (candidato.getPrioridad() < actual.getPrioridad()) {
+                desalojar = true;
+            }
+        } else if (nombrePol != null && nombrePol.toLowerCase().contains("earliest") || (nombrePol != null && nombrePol.toLowerCase().contains("edf"))) {
+            if (candidato.getDeadlineAbsoluto() < actual.getDeadlineAbsoluto()) {
+                desalojar = true;
+            }
+        }
+        if (!desalojar) {
+            return;
+        }
+        PCB siguiente = planificador.seleccionarSiguiente(cicloActual);
+        if (siguiente == null) {
+            return;
+        }
+        cpu.liberar();
+        actual.setEstado(EstadoProceso.LISTO);
+        planificador.encolarListo(actual);
+        if (siguiente.verificarDeadline(cicloActual)) {
+            terminarPorDeadline(siguiente, cicloActual);
+            return;
+        }
+        siguiente.setEstado(EstadoProceso.EJECUCION);
+        cpu.cargarProceso(siguiente);
     }
 
     /** Indica si no queda nada por hacer (CPU ociosa y todas las colas vacías). */

@@ -124,6 +124,18 @@ public class ListaEnlazada<T> {
         return nodoEn(indice).getDato();
     }
 
+    /**
+     * Devuelve el primer elemento sin eliminarlo.
+     *
+     * @return primer elemento, o {@code null} si la lista está vacía.
+     */
+    public T obtenerPrimero() {
+        if (cabeza == null) {
+            return null;
+        }
+        return cabeza.getDato();
+    }
+
     public void vaciar() {
         cabeza = null;
         ultimo = null;
