@@ -1,6 +1,7 @@
 package nucleo;
 
 import enums.EstadoProceso;
+import enums.MotivoBloqueo;
 import estructuras.Iterador;
 import estructuras.ListaEnlazada;
 import hardware.CPU;
@@ -8,6 +9,7 @@ import hardware.ComponenteReloj;
 import modelo.PCB;
 import planificacion.AlgoritmoPlanificacion;
 import planificacion.RoundRobin;
+import sincronizacion.Semaforo;
 
 /**
  * Computador simulado de ÁvilaOS: el hardware (CPU) más su núcleo del sistema
@@ -191,6 +193,68 @@ public class Computador implements ComponenteReloj {
             cpu.liberar();
         }
         terminados.agregar(proceso);
+    }
+
+    /**
+     * Bloquea un proceso en el semáforo indicado.
+     *
+     * <p>El proceso pasa a estado {@code BLOQUEADO}, se registra el motivo y el
+     * semáforo, se libera la CPU y se añade a la cola de bloqueados del
+     * computador.</p>
+     *
+     * @param proceso  proceso a bloquear.
+     * @param semaforo semáforo sobre el que espera.
+     * @param motivo   motivo del bloqueo.
+     * @param bufferId identificador del buffer (opcional).
+     * @return true si se bloqueó correctamente.
+     */
+    public boolean bloquearEnSemaforo(PCB proceso, Semaforo semaforo, MotivoBloqueo motivo, String bufferId) {
+        if (proceso == null) {
+            return false;
+        }
+        if (cpu.getProcesoActual() == proceso) {
+            cpu.liberar();
+        }
+        proceso.bloquear(motivo != null ? motivo : MotivoBloqueo.NINGUNO, bufferId);
+        // Eliminar de listos si estuviera
+        planificador.eliminarListo(proceso);
+        bloqueados.agregar(proceso);
+        return true;
+    }
+
+    /**
+     * Despierta al proceso indicado y lo pasa a la cola de listos.
+     *
+     * @param proceso proceso a despertar.
+     */
+    public void despertarProceso(PCB proceso) {
+        if (proceso == null) {
+            return;
+        }
+        bloqueados.eliminar(proceso);
+        proceso.setEstado(EstadoProceso.LISTO);
+        proceso.setMotivoBloqueo(MotivoBloqueo.NINGUNO);
+        proceso.setCiclosBloqueoRestantes(0);
+        planificador.encolarListo(proceso);
+    }
+
+    /**
+     * Intenta despertar procesos del semáforo indicado.
+     *
+     * @param semaforo semáforo sobre el que se hizo señal.
+     * @return true si se despertó algún proceso.
+     */
+    public boolean despertarDesdeSemaforo(Semaforo semaforo) {
+        if (semaforo == null) {
+            return false;
+        }
+        PCB p = semaforo.senalizar();
+        if (p == null) {
+            return false;
+        }
+        // Verificar que esté bloqueado en este computador
+        despertarProceso(p);
+        return true;
     }
 
     private void revisarDeadlines(long cicloActual) {
