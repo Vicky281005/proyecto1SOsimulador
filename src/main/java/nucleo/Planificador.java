@@ -48,6 +48,36 @@ public class Planificador {
         return siguiente;
     }
 
+    /**
+     * Obtiene el mejor candidato sin extraerlo de la cola.
+     *
+     * @return el candidato a ejecutar, o {@code null} si la cola está vacía.
+     */
+    public PCB peekSiguiente() {
+        if (listos.estaVacia()) {
+            return null;
+        }
+        return listos.obtenerPrimero();
+    }
+
+    /**
+     * Indica si la política es apropiativa.
+     *
+     * @return true si la política puede desalojar.
+     */
+    public boolean esApropiativa() {
+        return politica.esApropiativa();
+    }
+
+    /**
+     * Obtiene el quantum de la política actual.
+     *
+     * @return quantum en ciclos, o -1 si no aplica.
+     */
+    public int getQuantum() {
+        return politica.getQuantum();
+    }
+
     /** Indica si no hay ningún proceso listo. */
     public boolean estaVacio() {
         return listos.estaVacia();
@@ -61,6 +91,19 @@ public class Planificador {
     /** Política de planificación activa. */
     public AlgoritmoPlanificacion getPolitica() {
         return politica;
+    }
+
+    /**
+     * Elimina una instancia específica de la cola de listos.
+     *
+     * @param proceso proceso a eliminar.
+     * @return true si se eliminó.
+     */
+    public boolean eliminarListo(PCB proceso) {
+        if (proceso == null) {
+            return false;
+        }
+        return listos.eliminar(proceso);
     }
 
     /**
