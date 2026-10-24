@@ -18,6 +18,7 @@ import modelo.PCB;
 import nucleo.Computador;
 import planificacion.FabricaPoliticas;
 import simulacion.Simulador;
+import sincronizacion.Buffer;
 
 /**
  * Panel de la Vista 2 que muestra el estado de UN computador: el proceso que
@@ -50,6 +51,7 @@ public class PanelComputador extends JPanel {
     private final ListaVisual listos = new ListaVisual();
     private final ListaVisual bloqueados = new ListaVisual();
     private final ListaVisual terminados = new ListaVisual();
+    private final ListaVisual buffers = new ListaVisual();
 
     /** Evita que seleccionar la política por código dispare un cambio real. */
     private boolean ajustandoCombo;
@@ -86,13 +88,16 @@ public class PanelComputador extends JPanel {
         arriba.add(barraRam);
         add(arriba, BorderLayout.NORTH);
 
-        // --- Centro: las cuatro colas ---
+        // --- Centro: las cuatro colas + buffers ---
         JPanel colas = new JPanel(new GridLayout(2, 2, 6, 6));
         colas.add(envolver("Nuevos", nuevos));
         colas.add(envolver("Listos", listos));
         colas.add(envolver("Bloqueados (motivo)", bloqueados));
         colas.add(envolver("Terminados", terminados));
-        add(colas, BorderLayout.CENTER);
+        JPanel centro = new JPanel(new BorderLayout(6, 6));
+        centro.add(colas, BorderLayout.CENTER);
+        centro.add(envolver("Buffers", buffers), BorderLayout.SOUTH);
+        add(centro, BorderLayout.CENTER);
     }
 
     private JScrollPane envolver(String titulo, ListaVisual lista) {
@@ -135,6 +140,27 @@ public class PanelComputador extends JPanel {
         listos.mostrar(lineas(computador.getPlanificador().iteradorListos(), false, false));
         bloqueados.mostrar(lineas(computador.iteradorBloqueados(), true, false));
         terminados.mostrar(lineas(computador.iteradorTerminados(), false, true));
+        actualizarBuffers();
+    }
+
+    private void actualizarBuffers() {
+        estructuras.ListaEnlazada<Buffer> listaBuffers = computador.getBuffers();
+        if (listaBuffers == null || listaBuffers.estaVacia()) {
+            buffers.mostrar(new String[0]);
+            return;
+        }
+        String[] arr = new String[listaBuffers.getTamano()];
+        for (int i = 0; i < listaBuffers.getTamano(); i++) {
+            Buffer b = listaBuffers.obtener(i);
+            if (b == null) {
+                arr[i] = "-";
+            } else {
+                arr[i] = b.getId() + " [" + b.getCantidadElementos() + "/" + b.getCapacidad() + "] vacios=" + b.getValorVacios()
+                        + " llenos=" + b.getValorLlenos() + " mutex=" + b.getValorMutex()
+                        + " (esp vacios:" + b.getCantidadEsperandoVacios() + ")";
+            }
+        }
+        buffers.mostrar(arr);
     }
 
     /** Convierte una cola de procesos en líneas de texto, una por proceso. */

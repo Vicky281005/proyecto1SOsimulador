@@ -357,6 +357,35 @@ public class Computador implements ComponenteReloj {
         return memoriaDisponible;
     }
 
+    /**
+     * Reserva memoria para un componente del sistema (buffers, etc.).
+     *
+     * @param cantidad bytes/KB a reservar.
+     * @return true si hay espacio suficiente.
+     */
+    public boolean reservarMemoria(long cantidad) {
+        if (cantidad <= 0) {
+            return true;
+        }
+        if (cantidad > memoriaDisponible) {
+            return false;
+        }
+        memoriaDisponible -= cantidad;
+        return true;
+    }
+
+    /**
+     * Libera memoria reservada.
+     *
+     * @param cantidad cantidad a liberar.
+     */
+    public void liberarMemoria(long cantidad) {
+        if (cantidad <= 0) {
+            return;
+        }
+        memoriaDisponible += cantidad;
+    }
+
     public int getCantidadNuevos() {
         return nuevos.getTamano();
     }
@@ -367,6 +396,19 @@ public class Computador implements ComponenteReloj {
 
     public int getCantidadTerminados() {
         return terminados.getTamano();
+    }
+
+    private final ListaEnlazada<sincronizacion.Buffer> buffers = new ListaEnlazada<>();
+
+    public void registrarBuffer(sincronizacion.Buffer buffer) {
+        if (buffer == null) {
+            return;
+        }
+        buffers.agregar(buffer);
+    }
+
+    public ListaEnlazada<sincronizacion.Buffer> getBuffers() {
+        return buffers;
     }
 
     public Iterador<PCB> iteradorNuevos() {
