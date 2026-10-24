@@ -5,6 +5,7 @@ import estructuras.ListaEnlazada;
 import hardware.Reloj;
 import modelo.PCB;
 import nucleo.Computador;
+import sincronizacion.Buffer;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 
@@ -83,6 +84,43 @@ public class Simulador {
     /** Utilización de CPU de cada computador, ciclo por ciclo (para la gráfica). */
     private final HistorialUtilizacion historial = new HistorialUtilizacion();
 
+    private final ListaEnlazada<Buffer> buffers = new ListaEnlazada<>();
+
+    public void registrarBuffer(Buffer buffer) {
+        if (buffer == null) {
+            return;
+        }
+        if (buscarBuffer(buffer.getId()) == null) {
+            buffers.agregar(buffer);
+            Iterador<Computador> it = computadores.iterador();
+            while (it.haySiguiente()) {
+                Computador c = it.siguiente();
+                if (c.getId() == buffer.getIdComputadorAnfitrion()) {
+                    c.registrarBuffer(buffer);
+                    break;
+                }
+            }
+        }
+    }
+
+    public Buffer buscarBuffer(String id) {
+        if (id == null) {
+            return null;
+        }
+        Iterador<Buffer> it = buffers.iterador();
+        while (it.haySiguiente()) {
+            Buffer b = it.siguiente();
+            if (id.equals(b.getId())) {
+                return b;
+            }
+        }
+        return null;
+    }
+
+    public Iterador<Buffer> iteradorBuffers() {
+        return buffers.iterador();
+    }
+
     /**
      * Historial de utilización de CPU. Léalo siempre dentro de {@link #leerEstado(Runnable)}
      * mientras la simulación corra en su hilo.
@@ -125,6 +163,7 @@ public class Simulador {
             if (computadores.contiene(computador)) {
                 return; // ya estaba registrado, no se duplica
             }
+            computador.setSimulador(this);
             computadores.agregar(computador);
             reloj.registrar(computador);
         } finally {

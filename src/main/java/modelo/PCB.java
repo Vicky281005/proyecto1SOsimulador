@@ -51,6 +51,10 @@ public class PCB {
     private long ciclosCpuConsumidos;
     private boolean deadlineCumplido;
 
+    // Productor/Consumidor
+    private int elementosProducidos;
+    private int elementosConsumidos;
+
     public PCB(String nombre, int computadorAsignado, TipoProceso tipo, int prioridad, 
                long memoriaAsignada, long deadlineRelativo, 
                String idBufferTarget, int elementosRequeridos, int cadaCuantoCiclos, 
@@ -266,4 +270,10 @@ public class PCB {
     public long getCiclosCpuConsumidos() { return ciclosCpuConsumidos; }
     public boolean isDeadlineCumplido() { return deadlineCumplido; }
     public void setDeadlineCumplido(boolean deadlineCumplido) { this.deadlineCumplido = deadlineCumplido; }
+
+    public int getElementosProducidos() { return elementosProducidos; }
+    public void incrementarElementosProducidos() { this.elementosProducidos++; }
+
+    public int getElementosConsumidos() { return elementosConsumidos; }
+    public void incrementarElementosConsumidos() { this.elementosConsumidos++; }
 }
