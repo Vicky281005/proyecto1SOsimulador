@@ -71,7 +71,7 @@ public class ValidadorProcesoPrueba {
         verificar(soloFalla(v("P", "10", "100", "1", cpu, "100001", pc, ""), ValidadorProceso.CAMPO_DEADLINE), "deadline 100001");
         verificar(soloFalla(v("P", "10", "100", "1", cpu, "", pc, ""), ValidadorProceso.CAMPO_DEADLINE), "deadline vacío");
         verificar(soloFalla(v("P", "10", "100", "1", null, "50", pc, ""), ValidadorProceso.CAMPO_TIPO), "sin tipo");
-        // PRODUCTOR/CONSUMIDOR ahora soportados con campos extra - se valida en otro test
+        verificar(soloFalla(v("P", "10", "100", "1", TipoProceso.PRODUCTOR, "50", pc, ""), ValidadorProceso.CAMPO_TIPO), "tipo todavía no soportado (Productor)");
         verificar(soloFalla(v("P", "10", "100", "1", cpu, "50", null, ""), ValidadorProceso.CAMPO_COMPUTADOR), "sin computador destino");
 
         System.out.println("3) el periodo de E/S solo se valida en I/O Bound");

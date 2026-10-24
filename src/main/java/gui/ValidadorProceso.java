@@ -2,12 +2,10 @@ package gui;
 
 import enums.TipoInstruccion;
 import enums.TipoProceso;
-import estructuras.Iterador;
 import estructuras.ListaEnlazada;
 import modelo.Instruccion;
 import modelo.PCB;
 import nucleo.Computador;
-import simulacion.Simulador;
 
 /**
  * Validación y construcción de procesos a partir de lo que el usuario escribe
@@ -28,10 +26,7 @@ public final class ValidadorProceso {
     public static final int CAMPO_DEADLINE = 5;
     public static final int CAMPO_COMPUTADOR = 6;
     public static final int CAMPO_PERIODO_ES = 7;
-    public static final int CAMPO_BUFFER = 8;
-    public static final int CAMPO_CADA_CUANTOS = 9;
-    public static final int CAMPO_ELEMENTOS_REQUERIDOS = 10;
-    public static final int CANTIDAD_CAMPOS = 11;
+    public static final int CANTIDAD_CAMPOS = 8;
 
     // Rangos aceptados.
     public static final int MAX_LONGITUD_NOMBRE = 30;
@@ -47,16 +42,6 @@ public final class ValidadorProceso {
     }
 
     /**
-     * Valida todos los campos del formulario (compatibilidad con versión anterior).
-     */
-    public static String[] validar(String nombre, String instrucciones, String memoria,
-                                   String prioridad, TipoProceso tipo, String deadline,
-                                   Computador destino, String periodoEs) {
-        return validar(nombre, instrucciones, memoria, prioridad, tipo, deadline,
-                destino, periodoEs, null, "1", "1");
-    }
-
-    /**
      * Valida todos los campos del formulario.
      *
      * @return arreglo de {@link #CANTIDAD_CAMPOS} posiciones con el mensaje de error de cada
@@ -64,8 +49,7 @@ public final class ValidadorProceso {
      */
     public static String[] validar(String nombre, String instrucciones, String memoria,
                                    String prioridad, TipoProceso tipo, String deadline,
-                                   Computador destino, String periodoEs,
-                                   String bufferId, String cadaCuantos, String elementosRequeridos) {
+                                   Computador destino, String periodoEs) {
         String[] errores = new String[CANTIDAD_CAMPOS];
 
         // Nombre
@@ -135,25 +119,6 @@ public final class ValidadorProceso {
                 errores[CAMPO_PERIODO_ES] = "El periodo de E/S no puede ser mayor que el número de instrucciones.";
             }
         }
-
-        // Productor / Consumidor
-        if (tipo == TipoProceso.PRODUCTOR || tipo == TipoProceso.CONSUMIDOR) {
-            if (bufferId == null || bufferId.trim().isEmpty()) {
-                errores[CAMPO_BUFFER] = "Debes seleccionar un buffer.";
-            }
-            Long cada = entero(cadaCuantos);
-            if (cada == null) {
-                errores[CAMPO_CADA_CUANTOS] = mensajeNoEntero("Cada cuántos ciclos");
-            } else if (cada < 1) {
-                errores[CAMPO_CADA_CUANTOS] = "Debe ser al menos 1 ciclo.";
-            }
-            Long req = entero(elementosRequeridos);
-            if (req == null) {
-                errores[CAMPO_ELEMENTOS_REQUERIDOS] = mensajeNoEntero("Elementos requeridos");
-            } else if (req < 1) {
-                errores[CAMPO_ELEMENTOS_REQUERIDOS] = "Debe ser al menos 1 elemento.";
-            }
-        }
         return errores;
     }
 
@@ -176,15 +141,8 @@ public final class ValidadorProceso {
     public static PCB construir(String nombre, String instrucciones, String memoria,
                                 String prioridad, TipoProceso tipo, String deadline,
                                 Computador destino, String periodoEs, long cicloActual) {
-        return construir(nombre, instrucciones, memoria, prioridad, tipo, deadline, destino, periodoEs, null, "1", "1", cicloActual);
-    }
-
-    public static PCB construir(String nombre, String instrucciones, String memoria,
-                                String prioridad, TipoProceso tipo, String deadline,
-                                Computador destino, String periodoEs, String bufferId, String cadaCuantos,
-                                String elementosRequeridos, long cicloActual) {
         String[] errores = validar(nombre, instrucciones, memoria, prioridad, tipo, deadline,
-                destino, periodoEs, bufferId, cadaCuantos, elementosRequeridos);
+                destino, periodoEs);
         for (String e : errores) {
             if (e != null) {
                 throw new IllegalArgumentException(e);
@@ -192,33 +150,15 @@ public final class ValidadorProceso {
         }
         int n = entero(instrucciones).intValue();
         int periodo = tipo == TipoProceso.IO_BOUND ? entero(periodoEs).intValue() : 0;
-        String buf = (bufferId == null) ? "" : bufferId.trim();
-        int cada = 0;
-        int req = 0;
-        if (tipo == TipoProceso.PRODUCTOR || tipo == TipoProceso.CONSUMIDOR) {
-            cada = entero(cadaCuantos).intValue();
-            req = entero(elementosRequeridos).intValue();
-            n = Math.max(n, req * 4);
-        }
 
         ListaEnlazada<Instruccion> programa = new ListaEnlazada<>();
-        if (tipo == TipoProceso.PRODUCTOR) {
-            for (int i = 0; i < req; i++) {
-                programa.agregar(new Instruccion(TipoInstruccion.PRODUCIR));
-            }
-        } else if (tipo == TipoProceso.CONSUMIDOR) {
-            for (int i = 0; i < req; i++) {
-                programa.agregar(new Instruccion(TipoInstruccion.CONSUMIR));
-            }
-        } else {
-            for (int i = 1; i <= n; i++) {
-                boolean esES = periodo > 0 && i % periodo == 0;
-                programa.agregar(new Instruccion(esES ? TipoInstruccion.READ_IO : TipoInstruccion.CPU));
-            }
+        for (int i = 1; i <= n; i++) {
+            boolean esES = periodo > 0 && i % periodo == 0;
+            programa.agregar(new Instruccion(esES ? TipoInstruccion.READ_IO : TipoInstruccion.CPU));
         }
         return new PCB(nombre.trim(), destino.getId(), tipo,
                 entero(prioridad).intValue(), entero(memoria), entero(deadline),
-                buf, req, cada, programa, cicloActual);
+                "", 0, periodo, programa, cicloActual);
     }
 
     /** Convierte un texto en entero; devuelve {@code null} si no es un entero válido. */
