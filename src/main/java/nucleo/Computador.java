@@ -1,6 +1,7 @@
 package nucleo;
 
 import enums.EstadoProceso;
+import enums.ModoCPU;
 import enums.MotivoBloqueo;
 import enums.TipoInstruccion;
 import enums.TipoProceso;
@@ -80,6 +81,13 @@ public class Computador implements ComponenteReloj {
             proceso.asignarComputador(id);
         }
         nuevos.agregar(proceso);
+
+        simulacion.LogEventos log = (simulador != null) ? simulador.getLogEventos() : null;
+        if (log != null && !proceso.isCreacionRegistradaEnLog()) {
+            proceso.setCreacionRegistradaEnLog(true);
+            log.registrar(simulacion.LogEventos.TipoEvento.CREACION,
+                    "Creado proceso " + proceso.getNombre() + " (" + proceso.getId() + ") en estado NUEVO (RAM requerida: " + proceso.getMemoriaAsignada() + " KB)");
+        }
     }
 
     @Override
@@ -108,12 +116,14 @@ public class Computador implements ComponenteReloj {
         if (enEjecucion != null) {
             Instruccion instr = enEjecucion.getInstruccionActual();
             if (instr != null && esInstruccionKernel(instr.getTipo())) {
+                cpu.setModo(ModoCPU.KERNEL);
                 boolean bloqueado = procesarInstruccionKernel(enEjecucion, instr, cicloActual);
                 if (bloqueado) {
                     enEjecucion = cpu.getProcesoActual();
                 } else {
-                    // La instrucción se procesó, avanzar PC
+                    // La instrucción se procesó, avanzar PC y registrar paso en la CPU
                     enEjecucion.avanzarPasoCpu(cicloActual);
+                    cpu.registrarPasoEjecutado();
                     enEjecucion = cpu.getProcesoActual();
                 }
             } else {
@@ -188,16 +198,22 @@ public class Computador implements ComponenteReloj {
         switch (instr.getTipo()) {
             case PRODUCIR: {
                 // wait(vacios) -> wait(mutex) -> insertar -> signal(mutex) -> signal(llenos)
+                Semaforo semVacios = buffer.getVacios();
                 if (!proceso.isRecursoSemaforoAdquirido()) {
-                    if (!buffer.getVacios().esperar(proceso, MotivoBloqueo.SEMAFORO_VACIO)) {
-                        bloquearEnSemaforo(proceso, buffer.getVacios(), MotivoBloqueo.SEMAFORO_VACIO, buffer.getId());
-                        return true;
+                    synchronized (semVacios) {
+                        if (!semVacios.esperar(proceso, MotivoBloqueo.SEMAFORO_VACIO)) {
+                            bloquearEnSemaforo(proceso, semVacios, MotivoBloqueo.SEMAFORO_VACIO, buffer.getId());
+                            return true;
+                        }
                     }
                     proceso.setRecursoSemaforoAdquirido(true);
                 }
-                if (!buffer.getMutex().esperar(proceso)) {
-                    bloquearEnSemaforo(proceso, buffer.getMutex().getSemaforo(), MotivoBloqueo.MUTEX, buffer.getId());
-                    return true;
+                Semaforo semMutex = buffer.getMutex().getSemaforo();
+                synchronized (semMutex) {
+                    if (!buffer.getMutex().esperar(proceso)) {
+                        bloquearEnSemaforo(proceso, semMutex, MotivoBloqueo.MUTEX, buffer.getId());
+                        return true;
+                    }
                 }
                 if (accesoRemoto) {
                     // Bloquear por latencia de red antes de insertar
@@ -215,6 +231,12 @@ public class Computador implements ComponenteReloj {
                     proceso.bloquear(MotivoBloqueo.LATENCIA_RED, buffer.getId());
                     planificador.eliminarListo(proceso);
                     bloqueados.agregar(proceso);
+                    simulacion.LogEventos logRem1 = (simulador != null) ? simulador.getLogEventos() : null;
+                    if (logRem1 != null) {
+                        logRem1.registrar(simulacion.LogEventos.TipoEvento.ACCESO_REMOTO,
+                                "Acceso remoto LATENCIA_RED: " + proceso.getNombre() + " -> buffer " + buffer.getId()
+                                        + " (" + nombre + " != PC anfitrión)");
+                    }
                     return true;
                 }
                 buffer.insertar(new Object());
@@ -230,19 +252,35 @@ public class Computador implements ComponenteReloj {
                 if (despertadoLlenos != null) {
                     despertarProcesoCluster(despertadoLlenos);
                 }
+                simulacion.LogEventos logProd = (simulador != null) ? simulador.getLogEventos() : null;
+                if (logProd != null) {
+                    Computador anf = (simulador != null) ? simulador.buscarComputador(buffer.getIdComputadorAnfitrion()) : null;
+                    String nomAnf = (anf != null) ? anf.getNombre() : ("PC-" + buffer.getIdComputadorAnfitrion());
+                    logProd.registrar(simulacion.LogEventos.TipoEvento.BUFFER,
+                            "Inserción en buffer " + buffer.getId() + " por proceso " + proceso.getNombre()
+                                    + " (PID " + proceso.getId() + ") [anfitrión: " + nomAnf + "] -> "
+                                    + "(vacíos=" + buffer.getValorVacios() + ", llenos=" + buffer.getValorLlenos()
+                                    + ", mutex=" + buffer.getValorMutex() + ")");
+                }
                 return false;
             }
             case CONSUMIR: {
+                Semaforo semLlenos = buffer.getLlenos();
                 if (!proceso.isRecursoSemaforoAdquirido()) {
-                    if (!buffer.getLlenos().esperar(proceso, MotivoBloqueo.SEMAFORO_LLENO)) {
-                        bloquearEnSemaforo(proceso, buffer.getLlenos(), MotivoBloqueo.SEMAFORO_LLENO, buffer.getId());
-                        return true;
+                    synchronized (semLlenos) {
+                        if (!semLlenos.esperar(proceso, MotivoBloqueo.SEMAFORO_LLENO)) {
+                            bloquearEnSemaforo(proceso, semLlenos, MotivoBloqueo.SEMAFORO_LLENO, buffer.getId());
+                            return true;
+                        }
                     }
                     proceso.setRecursoSemaforoAdquirido(true);
                 }
-                if (!buffer.getMutex().esperar(proceso)) {
-                    bloquearEnSemaforo(proceso, buffer.getMutex().getSemaforo(), MotivoBloqueo.MUTEX, buffer.getId());
-                    return true;
+                Semaforo semMutex = buffer.getMutex().getSemaforo();
+                synchronized (semMutex) {
+                    if (!buffer.getMutex().esperar(proceso)) {
+                        bloquearEnSemaforo(proceso, semMutex, MotivoBloqueo.MUTEX, buffer.getId());
+                        return true;
+                    }
                 }
                 if (accesoRemoto) {
                     int latencia = 3;
@@ -276,13 +314,25 @@ public class Computador implements ComponenteReloj {
                 if (despertadoVacios != null) {
                     despertarProcesoCluster(despertadoVacios);
                 }
+                simulacion.LogEventos logCons = (simulador != null) ? simulador.getLogEventos() : null;
+                if (logCons != null) {
+                    Computador anf = (simulador != null) ? simulador.buscarComputador(buffer.getIdComputadorAnfitrion()) : null;
+                    String nomAnf = (anf != null) ? anf.getNombre() : ("PC-" + buffer.getIdComputadorAnfitrion());
+                    logCons.registrar(simulacion.LogEventos.TipoEvento.BUFFER,
+                            "Extracción de buffer " + buffer.getId() + " por proceso " + proceso.getNombre()
+                                    + " (PID " + proceso.getId() + ") [anfitrión: " + nomAnf + "] -> "
+                                    + "(vacíos=" + buffer.getValorVacios() + ", llenos=" + buffer.getValorLlenos()
+                                    + ", mutex=" + buffer.getValorMutex() + ")");
+                }
                 return false;
             }
             case SEM_WAIT: {
                 Semaforo s = buffer.getVacios();
-                if (!s.esperar(proceso, MotivoBloqueo.SEMAFORO_VACIO)) {
-                    bloquearEnSemaforo(proceso, s, MotivoBloqueo.SEMAFORO_VACIO, buffer.getId());
-                    return true;
+                synchronized (s) {
+                    if (!s.esperar(proceso, MotivoBloqueo.SEMAFORO_VACIO)) {
+                        bloquearEnSemaforo(proceso, s, MotivoBloqueo.SEMAFORO_VACIO, buffer.getId());
+                        return true;
+                    }
                 }
                 return false;
             }
@@ -368,13 +418,30 @@ public class Computador implements ComponenteReloj {
         if (proceso == null) {
             return;
         }
-        // Si estaba en la cola de algún semáforo de buffer, desvincularlo para no dejarlo como proceso fantasma
-        if (proceso.getBufferBloqueadoId() != null && !proceso.getBufferBloqueadoId().isEmpty()) {
-            Buffer buffer = (simulador != null) ? simulador.buscarBuffer(proceso.getBufferBloqueadoId()) : null;
+        // Si estaba en la cola de algún semáforo de buffer, desvincularlo para no dejarlo como proceso fantasma.
+        // Si tenía un permiso reservado, transferir dicho permiso y despertar al siguiente proceso en espera.
+        String bufferIdParaRemover = proceso.getBufferBloqueadoId();
+        if (bufferIdParaRemover == null || bufferIdParaRemover.isEmpty()) {
+            bufferIdParaRemover = proceso.getIdBufferTarget();
+        }
+        if (bufferIdParaRemover != null && !bufferIdParaRemover.isEmpty()) {
+            Buffer buffer = (simulador != null) ? simulador.buscarBuffer(bufferIdParaRemover) : null;
             if (buffer != null) {
-                buffer.getVacios().remover(proceso);
-                buffer.getLlenos().remover(proceso);
-                buffer.getMutex().remover(proceso);
+                PCB despV = buffer.getVacios().remover(proceso);
+                if (despV != null) {
+                    buffer.getVacios().signal();
+                    despertarProcesoCluster(despV);
+                }
+                PCB despL = buffer.getLlenos().remover(proceso);
+                if (despL != null) {
+                    buffer.getLlenos().signal();
+                    despertarProcesoCluster(despL);
+                }
+                PCB despM = buffer.getMutex().remover(proceso);
+                if (despM != null) {
+                    buffer.getMutex().signal();
+                    despertarProcesoCluster(despM);
+                }
             }
         }
 
@@ -532,11 +599,11 @@ public class Computador implements ComponenteReloj {
      * @param proceso proceso a despertar.
      */
     public void despertarProcesoCluster(PCB proceso) {
-        if (proceso == null) {
+        if (proceso == null || proceso.getEstado() == EstadoProceso.TERMINADO) {
             return;
         }
         if (simulador != null) {
-            Computador compDestino = simulador.buscarComputador(proceso.getComputadorAsignado());
+            Computador compDestino = simulador.buscarComputador(proceso.getIdComputador());
             if (compDestino != null) {
                 compDestino.despertarProceso(proceso);
                 return;
@@ -551,13 +618,11 @@ public class Computador implements ComponenteReloj {
      * @param proceso proceso a despertar.
      */
     public void despertarProceso(PCB proceso) {
-        if (proceso == null) {
+        if (proceso == null || proceso.getEstado() == EstadoProceso.TERMINADO) {
             return;
         }
         bloqueados.eliminar(proceso);
-        proceso.setEstado(EstadoProceso.LISTO);
-        proceso.setMotivoBloqueo(MotivoBloqueo.NINGUNO);
-        proceso.setCiclosBloqueoRestantes(0);
+        proceso.desbloquear();
         planificador.encolarListo(proceso);
         simulacion.LogEventos logDesb = (simulador != null) ? simulador.getLogEventos() : null;
         if (logDesb != null) {
@@ -643,10 +708,11 @@ public class Computador implements ComponenteReloj {
                     buffer = simulador.buscarBuffer(bid);
                 }
                 if (buffer != null) {
-                    if (p.getOperacionRemotaPendiente() == TipoInstruccion.PRODUCIR) {
+                    TipoInstruccion opRemota = p.getOperacionRemotaPendiente();
+                    if (opRemota == TipoInstruccion.PRODUCIR) {
                         buffer.insertar(new Object());
                         p.incrementarElementosProducidos();
-                    } else if (p.getOperacionRemotaPendiente() == TipoInstruccion.CONSUMIR) {
+                    } else if (opRemota == TipoInstruccion.CONSUMIR) {
                         buffer.extraer();
                         p.incrementarElementosConsumidos();
                     }
@@ -657,16 +723,27 @@ public class Computador implements ComponenteReloj {
                         despertarProcesoCluster(despertadoMutex);
                     }
                     // Señalizar el recurso correspondiente (llenos tras producir, vacios tras consumir)
-                    if (p.getOperacionRemotaPendiente() == TipoInstruccion.PRODUCIR) {
+                    if (opRemota == TipoInstruccion.PRODUCIR) {
                         PCB despertadoLlenos = buffer.getLlenos().senalizar();
                         if (despertadoLlenos != null) {
                             despertarProcesoCluster(despertadoLlenos);
                         }
-                    } else if (p.getOperacionRemotaPendiente() == TipoInstruccion.CONSUMIR) {
+                    } else if (opRemota == TipoInstruccion.CONSUMIR) {
                         PCB despertadoVacios = buffer.getVacios().senalizar();
                         if (despertadoVacios != null) {
                             despertarProcesoCluster(despertadoVacios);
                         }
+                    }
+                    simulacion.LogEventos logOp = (simulador != null) ? simulador.getLogEventos() : null;
+                    if (logOp != null) {
+                        Computador anf = (simulador != null) ? simulador.buscarComputador(buffer.getIdComputadorAnfitrion()) : null;
+                        String nomAnf = (anf != null) ? anf.getNombre() : ("PC-" + buffer.getIdComputadorAnfitrion());
+                        String tipoOp = (opRemota == TipoInstruccion.PRODUCIR) ? "Inserción remota en buffer " : "Extracción remota de buffer ";
+                        logOp.registrar(simulacion.LogEventos.TipoEvento.BUFFER,
+                                tipoOp + buffer.getId() + " por proceso " + p.getNombre()
+                                        + " (PID " + p.getId() + ") [anfitrión: " + nomAnf + "] -> "
+                                        + "(vacíos=" + buffer.getValorVacios() + ", llenos=" + buffer.getValorLlenos()
+                                        + ", mutex=" + buffer.getValorMutex() + ")");
                     }
                 }
                 p.limpiarOperacionRemotaPendiente();
@@ -717,14 +794,12 @@ public class Computador implements ComponenteReloj {
             return;
         }
         // Comparar
-        String nombrePol = planificador.getPolitica().getNombre();
         boolean desalojar = false;
-        if (nombrePol != null && nombrePol.toLowerCase().contains("prioridad")) {
-            // menor número = mayor prioridad
+        if (planificador.getPolitica() instanceof planificacion.Prioridades) {
             if (candidato.getPrioridad() < actual.getPrioridad()) {
                 desalojar = true;
             }
-        } else if (nombrePol != null && nombrePol.toLowerCase().contains("earliest") || (nombrePol != null && nombrePol.toLowerCase().contains("edf"))) {
+        } else if (planificador.getPolitica() instanceof planificacion.EDF) {
             if (candidato.getDeadlineAbsoluto() < actual.getDeadlineAbsoluto()) {
                 desalojar = true;
             }
@@ -736,15 +811,16 @@ public class Computador implements ComponenteReloj {
         if (siguiente == null) {
             return;
         }
-        cpu.liberar();
+        cpu.desalojar();
         actual.setEstado(EstadoProceso.LISTO);
         planificador.encolarListo(actual);
         if (siguiente.verificarDeadline(cicloActual)) {
             terminarPorDeadline(siguiente, cicloActual);
+            despachar(cicloActual);
             return;
         }
         siguiente.setEstado(EstadoProceso.EJECUCION);
-        cpu.cargarProceso(siguiente);
+        cpu.asignar(siguiente);
     }
 
     /**
@@ -789,7 +865,7 @@ public class Computador implements ComponenteReloj {
         return memoriaTotal;
     }
 
-    public long getMemoriaDisponible() {
+    public synchronized long getMemoriaDisponible() {
         return memoriaDisponible;
     }
 
@@ -799,7 +875,7 @@ public class Computador implements ComponenteReloj {
      * @param cantidad bytes/KB a reservar.
      * @return true si hay espacio suficiente.
      */
-    public boolean reservarMemoria(long cantidad) {
+    public synchronized boolean reservarMemoria(long cantidad) {
         if (cantidad <= 0) {
             return true;
         }
@@ -815,11 +891,11 @@ public class Computador implements ComponenteReloj {
      *
      * @param cantidad cantidad a liberar.
      */
-    public void liberarMemoria(long cantidad) {
+    public synchronized void liberarMemoria(long cantidad) {
         if (cantidad <= 0) {
             return;
         }
-        memoriaDisponible += cantidad;
+        memoriaDisponible = Math.min(memoriaTotal, memoriaDisponible + cantidad);
     }
 
     public int getCantidadNuevos() {
@@ -839,6 +915,17 @@ public class Computador implements ComponenteReloj {
 
     public void setSimulador(Simulador simulador) {
         this.simulador = simulador;
+        if (simulador != null && simulador.getLogEventos() != null) {
+            Iterador<PCB> it = nuevos.iterador();
+            while (it.haySiguiente()) {
+                PCB p = it.siguiente();
+                if (!p.isCreacionRegistradaEnLog()) {
+                    p.setCreacionRegistradaEnLog(true);
+                    simulador.getLogEventos().registrar(simulacion.LogEventos.TipoEvento.CREACION,
+                            "Creado proceso " + p.getNombre() + " (" + p.getId() + ") en estado NUEVO (RAM requerida: " + p.getMemoriaAsignada() + " KB)");
+                }
+            }
+        }
     }
 
     public Simulador getSimulador() {

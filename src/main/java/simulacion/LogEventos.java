@@ -18,6 +18,8 @@ public class LogEventos {
         ADMISION,
         TERMINADO,
         DESALOJO,
+        BUFFER,
+        CREACION,
         OTRO
     }
 
@@ -60,7 +62,7 @@ public class LogEventos {
         this.simulador = simulador;
     }
 
-    public void registrar(TipoEvento tipo, String mensaje) {
+    public synchronized void registrar(TipoEvento tipo, String mensaje) {
         long ciclo = 0;
         if (simulador != null) {
             ciclo = simulador.getCicloActual();
@@ -72,7 +74,7 @@ public class LogEventos {
         }
     }
 
-    public ListaEnlazada<Evento> getUltimos(int n) {
+    public synchronized ListaEnlazada<Evento> getUltimos(int n) {
         ListaEnlazada<Evento> res = new ListaEnlazada<>();
         int tam = eventos.getTamano();
         int desde = Math.max(0, tam - n);
@@ -82,7 +84,7 @@ public class LogEventos {
         return res;
     }
 
-    public Iterador<Evento> iterador() {
+    public synchronized Iterador<Evento> iterador() {
         return eventos.iterador();
     }
 }

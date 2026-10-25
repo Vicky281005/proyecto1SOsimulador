@@ -131,6 +131,9 @@ public class Simulador {
             if (anfitrion != null) {
                 anfitrion.registrarBuffer(buffer);
             }
+            if (logEventos != null) {
+                buffer.registrarEnLogSiNecesario(logEventos);
+            }
         } finally {
             mutexEstado.release();
         }

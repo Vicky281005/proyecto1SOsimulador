@@ -16,6 +16,7 @@ import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.JSlider;
 import javax.swing.JTextField;
+import javax.swing.SwingUtilities;
 import javax.swing.Timer;
 import nucleo.Computador;
 import simulacion.LogEventos;
@@ -275,30 +276,69 @@ public class VentanaEstado extends JFrame {
     /** Lee el estado de forma segura y actualiza todos los paneles. */
     private void refrescar() {
         final StringBuilder logSb = new StringBuilder();
+        final long[] cicloActual = new long[1];
         simulador.leerEstado(() -> {
-            lblCiclo.setText("Ciclo: " + simulador.getCicloActual());
+            cicloActual[0] = simulador.getCicloActual();
             for (PanelComputador panel : paneles) {
                 panel.actualizar();
             }
             LogEventos log = simulador.getLogEventos();
             if (log != null) {
-                estructuras.ListaEnlazada<LogEventos.Evento> ultimos = log.getUltimos(60);
+                estructuras.ListaEnlazada<LogEventos.Evento> ultimos = log.getUltimos(200);
                 estructuras.Iterador<LogEventos.Evento> itLog = ultimos.iterador();
                 while (itLog.haySiguiente()) {
                     logSb.append(itLog.siguiente().toString()).append('\n');
                 }
             }
         });
-        if (logSb.length() > 0) {
-            areaLog.setText(logSb.toString());
-            areaLog.setCaretPosition(areaLog.getDocument().getLength());
-        }
-        lblEstado.setText("Estado: " + textoEstado());
-        btnIniciar.setEnabled(!iniciada && !detenida);
-        btnPausa.setEnabled(iniciada && !detenida);
-        btnPausa.setText(simulador.estaPausada() ? "Reanudar" : "Pausar");
-        btnDetener.setEnabled(!detenida);
-        btnCrear.setEnabled(!detenida);
+
+        SwingUtilities.invokeLater(() -> {
+            lblCiclo.setText("Ciclo: " + cicloActual[0]);
+            lblEstado.setText("Estado: " + textoEstado());
+            btnIniciar.setEnabled(!iniciada && !detenida);
+            btnPausa.setEnabled(iniciada && !detenida);
+            btnPausa.setText(simulador.estaPausada() ? "Reanudar" : "Pausar");
+            btnDetener.setEnabled(!detenida);
+            btnCrear.setEnabled(!detenida);
+
+            if (logSb.length() > 0) {
+                String nuevoTexto = logSb.toString();
+                if (!nuevoTexto.equals(areaLog.getText())) {
+                    javax.swing.JScrollBar scrollBar = scrollLog.getVerticalScrollBar();
+                    boolean estabaAlFinal = (scrollBar.getValue() + scrollBar.getVisibleAmount() >= scrollBar.getMaximum() - 20);
+                    int posPrevia = scrollBar.getValue();
+
+                    areaLog.setText(nuevoTexto);
+
+                    if (estabaAlFinal) {
+                        areaLog.setCaretPosition(areaLog.getDocument().getLength());
+                    } else {
+                        SwingUtilities.invokeLater(() -> scrollBar.setValue(posPrevia));
+                    }
+                }
+            }
+        });
+    }
+
+    /**
+     * Agrega una nueva línea al log de eventos de la GUI con smart auto-scroll y thread-safety.
+     *
+     * @param linea línea de texto a agregar al log.
+     */
+    public void agregarLineaLog(String linea) {
+        SwingUtilities.invokeLater(() -> {
+            javax.swing.JScrollBar scrollBar = scrollLog.getVerticalScrollBar();
+            boolean estabaAlFinal = (scrollBar.getValue() + scrollBar.getVisibleAmount() >= scrollBar.getMaximum() - 20);
+            int posPrevia = scrollBar.getValue();
+
+            areaLog.append(linea + "\n");
+
+            if (estabaAlFinal) {
+                areaLog.setCaretPosition(areaLog.getDocument().getLength());
+            } else {
+                SwingUtilities.invokeLater(() -> scrollBar.setValue(posPrevia));
+            }
+        });
     }
 
     private String textoEstado() {

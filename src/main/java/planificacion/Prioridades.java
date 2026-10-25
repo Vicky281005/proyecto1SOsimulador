@@ -33,6 +33,20 @@ public class Prioridades implements AlgoritmoPlanificacion {
     }
 
     @Override
+    public void reordenar(ListaEnlazada<PCB> listos, long cicloActual) {
+        if (listos == null || listos.getTamano() <= 1) {
+            return;
+        }
+        ListaEnlazada<PCB> temporal = new ListaEnlazada<>();
+        while (!listos.estaVacia()) {
+            temporal.agregar(listos.eliminarPrimero());
+        }
+        while (!temporal.estaVacia()) {
+            encolar(listos, temporal.eliminarPrimero());
+        }
+    }
+
+    @Override
     public boolean esApropiativa() {
         return true;
     }
