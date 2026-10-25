@@ -90,15 +90,15 @@ public class Simulador {
         if (buffer == null) {
             return;
         }
-        if (buscarBuffer(buffer.getId()) == null) {
-            buffers.agregar(buffer);
-            Iterador<Computador> it = computadores.iterador();
-            while (it.haySiguiente()) {
-                Computador c = it.siguiente();
-                if (c.getId() == buffer.getIdComputadorAnfitrion()) {
-                    c.registrarBuffer(buffer);
-                    break;
-                }
+        if (buscarBuffer(buffer.getId()) != null) {
+            return;
+        }
+        buffers.agregar(buffer);
+        Iterador<Computador> it = computadores.iterador();
+        while (it.haySiguiente()) {
+            Computador c = it.siguiente();
+            if (c.getId() == buffer.getIdComputadorAnfitrion()) {
+                c.registrarBuffer(buffer);
             }
         }
     }

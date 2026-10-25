@@ -80,7 +80,7 @@ public final class ValidadorProceso {
         if (tipo == null) {
             errores[CAMPO_TIPO] = "Elige el tipo de proceso.";
         } else if (tipo != TipoProceso.CPU_BOUND && tipo != TipoProceso.IO_BOUND) {
-            errores[CAMPO_TIPO] = "Por ahora solo se pueden crear procesos CPU Bound e I/O Bound.";
+            // Permitir PRODUCTOR y CONSUMIDOR
         }
         if (destino == null) {
             errores[CAMPO_COMPUTADOR] = "Elige el computador destino.";

@@ -544,6 +544,13 @@ public class Computador implements ComponenteReloj {
         if (buffer == null) {
             return;
         }
+        Iterador<Buffer> it = buffers.iterador();
+        while (it.haySiguiente()) {
+            Buffer b = it.siguiente();
+            if (b != null && buffer.getId() != null && buffer.getId().equals(b.getId())) {
+                return;
+            }
+        }
         buffers.agregar(buffer);
     }
 
