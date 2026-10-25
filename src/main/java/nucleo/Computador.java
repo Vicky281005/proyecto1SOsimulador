@@ -230,6 +230,16 @@ public class Computador implements ComponenteReloj {
                 if (despertadoLlenos != null) {
                     despertarProcesoCluster(despertadoLlenos);
                 }
+                simulacion.LogEventos logProd = (simulador != null) ? simulador.getLogEventos() : null;
+                if (logProd != null) {
+                    Computador anf = (simulador != null) ? simulador.buscarComputador(buffer.getIdComputadorAnfitrion()) : null;
+                    String nomAnf = (anf != null) ? anf.getNombre() : ("PC-" + buffer.getIdComputadorAnfitrion());
+                    logProd.registrar(simulacion.LogEventos.TipoEvento.BUFFER,
+                            "Inserción en buffer " + buffer.getId() + " por proceso " + proceso.getNombre()
+                                    + " (PID " + proceso.getId() + ") [anfitrión: " + nomAnf + "] -> "
+                                    + "(vacíos=" + buffer.getValorVacios() + ", llenos=" + buffer.getValorLlenos()
+                                    + ", mutex=" + buffer.getValorMutex() + ")");
+                }
                 return false;
             }
             case CONSUMIR: {
@@ -275,6 +285,16 @@ public class Computador implements ComponenteReloj {
                 PCB despertadoVacios = buffer.getVacios().senalizar();
                 if (despertadoVacios != null) {
                     despertarProcesoCluster(despertadoVacios);
+                }
+                simulacion.LogEventos logCons = (simulador != null) ? simulador.getLogEventos() : null;
+                if (logCons != null) {
+                    Computador anf = (simulador != null) ? simulador.buscarComputador(buffer.getIdComputadorAnfitrion()) : null;
+                    String nomAnf = (anf != null) ? anf.getNombre() : ("PC-" + buffer.getIdComputadorAnfitrion());
+                    logCons.registrar(simulacion.LogEventos.TipoEvento.BUFFER,
+                            "Extracción de buffer " + buffer.getId() + " por proceso " + proceso.getNombre()
+                                    + " (PID " + proceso.getId() + ") [anfitrión: " + nomAnf + "] -> "
+                                    + "(vacíos=" + buffer.getValorVacios() + ", llenos=" + buffer.getValorLlenos()
+                                    + ", mutex=" + buffer.getValorMutex() + ")");
                 }
                 return false;
             }
@@ -643,10 +663,11 @@ public class Computador implements ComponenteReloj {
                     buffer = simulador.buscarBuffer(bid);
                 }
                 if (buffer != null) {
-                    if (p.getOperacionRemotaPendiente() == TipoInstruccion.PRODUCIR) {
+                    TipoInstruccion opRemota = p.getOperacionRemotaPendiente();
+                    if (opRemota == TipoInstruccion.PRODUCIR) {
                         buffer.insertar(new Object());
                         p.incrementarElementosProducidos();
-                    } else if (p.getOperacionRemotaPendiente() == TipoInstruccion.CONSUMIR) {
+                    } else if (opRemota == TipoInstruccion.CONSUMIR) {
                         buffer.extraer();
                         p.incrementarElementosConsumidos();
                     }
@@ -657,16 +678,27 @@ public class Computador implements ComponenteReloj {
                         despertarProcesoCluster(despertadoMutex);
                     }
                     // Señalizar el recurso correspondiente (llenos tras producir, vacios tras consumir)
-                    if (p.getOperacionRemotaPendiente() == TipoInstruccion.PRODUCIR) {
+                    if (opRemota == TipoInstruccion.PRODUCIR) {
                         PCB despertadoLlenos = buffer.getLlenos().senalizar();
                         if (despertadoLlenos != null) {
                             despertarProcesoCluster(despertadoLlenos);
                         }
-                    } else if (p.getOperacionRemotaPendiente() == TipoInstruccion.CONSUMIR) {
+                    } else if (opRemota == TipoInstruccion.CONSUMIR) {
                         PCB despertadoVacios = buffer.getVacios().senalizar();
                         if (despertadoVacios != null) {
                             despertarProcesoCluster(despertadoVacios);
                         }
+                    }
+                    simulacion.LogEventos logOp = (simulador != null) ? simulador.getLogEventos() : null;
+                    if (logOp != null) {
+                        Computador anf = (simulador != null) ? simulador.buscarComputador(buffer.getIdComputadorAnfitrion()) : null;
+                        String nomAnf = (anf != null) ? anf.getNombre() : ("PC-" + buffer.getIdComputadorAnfitrion());
+                        String tipoOp = (opRemota == TipoInstruccion.PRODUCIR) ? "Inserción remota en buffer " : "Extracción remota de buffer ";
+                        logOp.registrar(simulacion.LogEventos.TipoEvento.BUFFER,
+                                tipoOp + buffer.getId() + " por proceso " + p.getNombre()
+                                        + " (PID " + p.getId() + ") [anfitrión: " + nomAnf + "] -> "
+                                        + "(vacíos=" + buffer.getValorVacios() + ", llenos=" + buffer.getValorLlenos()
+                                        + ", mutex=" + buffer.getValorMutex() + ")");
                     }
                 }
                 p.limpiarOperacionRemotaPendiente();

@@ -22,6 +22,7 @@ public class Buffer {
     private final Semaforo vacios;
     private final Semaforo llenos;
     private final SemaforoBinario mutex;
+    private boolean registradoEnLog;
 
     /**
      * Crea un buffer y reserva su memoria en el computador anfitrión.
@@ -56,6 +57,25 @@ public class Buffer {
         long memoriaAReservar = capacidad * Math.max(1, tamanoElementoBytes);
         if (!anfitrion.reservarMemoria(memoriaAReservar)) {
             throw new IllegalStateException("No hay memoria suficiente en " + anfitrion.getNombre() + " para crear el buffer " + this.id);
+        }
+
+        if (anfitrion.getSimulador() != null && anfitrion.getSimulador().getLogEventos() != null) {
+            registrarEnLogSiNecesario(anfitrion.getSimulador().getLogEventos());
+        }
+    }
+
+    /**
+     * Registra el evento de creación del buffer en el log si aún no ha sido emitido.
+     * Formato: "[ciclo X] BUFFER - Creado buffer [ID] con capacidad N (vacíos=N, llenos=0, mutex=1)"
+     *
+     * @param log gestor de eventos de la simulación.
+     */
+    public synchronized void registrarEnLogSiNecesario(simulacion.LogEventos log) {
+        if (!registradoEnLog && log != null) {
+            registradoEnLog = true;
+            log.registrar(simulacion.LogEventos.TipoEvento.BUFFER,
+                    "Creado buffer " + this.id + " con capacidad " + capacidad
+                            + " (vacíos=" + capacidad + ", llenos=0, mutex=1)");
         }
     }
 
