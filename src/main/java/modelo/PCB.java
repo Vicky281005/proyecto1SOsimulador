@@ -43,6 +43,9 @@ public class PCB {
     private String bufferRemotoPendienteId;
     private boolean mutexRemotoRetenido;
 
+    // Bandera de recurso previamente adquirido (vacíos/llenos) en protocolo Productor-Consumidor (Stallings)
+    private boolean recursoSemaforoAdquirido;
+
     // Configuración Inicial Productor / Consumidor (Metadatos)
     private String idBufferTarget;
     private int elementosRequeridos;
@@ -312,4 +315,7 @@ public class PCB {
 
     public int getElementosConsumidos() { return elementosConsumidos; }
     public void incrementarElementosConsumidos() { this.elementosConsumidos++; }
+
+    public boolean isRecursoSemaforoAdquirido() { return recursoSemaforoAdquirido; }
+    public void setRecursoSemaforoAdquirido(boolean recursoSemaforoAdquirido) { this.recursoSemaforoAdquirido = recursoSemaforoAdquirido; }
 }

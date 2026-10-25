@@ -79,6 +79,32 @@ public class Planificador {
         return politica.getQuantum();
     }
 
+    /**
+     * Ajusta el quantum de Round Robin en tiempo de ejecución.
+     *
+     * @param nuevoQuantum nuevo valor de quantum (debe ser > 0).
+     */
+    public void setQuantum(int nuevoQuantum) {
+        if (nuevoQuantum <= 0) {
+            throw new IllegalArgumentException("El quantum debe ser mayor que cero.");
+        }
+        if (politica instanceof planificacion.RoundRobin rr) {
+            rr.setQuantum(nuevoQuantum);
+            simulacion.LogEventos log = null;
+            if (computador != null && computador.getSimulador() != null) {
+                log = computador.getSimulador().getLogEventos();
+            }
+            if (log != null) {
+                log.registrar(simulacion.LogEventos.TipoEvento.CAMBIO_POLITICA,
+                        "Ajuste de quantum a " + nuevoQuantum + " en " + (computador != null ? computador.getNombre() : ""));
+            }
+            if (computador != null) {
+                long cicloActual = (computador.getSimulador() != null) ? computador.getSimulador().getCicloActual() : 0;
+                computador.evaluarDesalojo(cicloActual);
+            }
+        }
+    }
+
     /** Indica si no hay ningún proceso listo. */
     public boolean estaVacio() {
         return listos.estaVacia();
@@ -113,6 +139,7 @@ public class Planificador {
 
     /**
      * Cambia la política de planificación en tiempo de ejecución.
+     * Reorganiza la cola de listos aplicando el nuevo criterio y evalúa el desalojo inmediato.
      *
      * @param politica nueva política.
      */
@@ -130,6 +157,28 @@ public class Planificador {
             log.registrar(simulacion.LogEventos.TipoEvento.CAMBIO_POLITICA, "Cambio de política " + ant + " -> " + nue + " en " + (computador != null ? computador.getNombre() : ""));
         }
         this.politica = politica;
+        reorganizarListos();
+    }
+
+    /**
+     * Reorganiza la cola de listos en caliente aplicando el orden de la política activa
+     * y evalúa el desalojo inmediato sobre la CPU si la política lo exige.
+     */
+    public void reorganizarListos() {
+        if (!listos.estaVacia()) {
+            ListaEnlazada<PCB> temporal = new ListaEnlazada<>();
+            while (!listos.estaVacia()) {
+                temporal.agregar(listos.eliminarPrimero());
+            }
+            Iterador<PCB> it = temporal.iterador();
+            while (it.haySiguiente()) {
+                politica.encolar(listos, it.siguiente());
+            }
+        }
+        if (computador != null) {
+            long cicloActual = (computador.getSimulador() != null) ? computador.getSimulador().getCicloActual() : 0;
+            computador.evaluarDesalojo(cicloActual);
+        }
     }
 
     /** Iterador sobre la cola de listos, para observarla sin exponer la lista interna. */
