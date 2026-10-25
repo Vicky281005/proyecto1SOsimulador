@@ -83,11 +83,28 @@ public class Simulador {
 
     /** Utilización de CPU de cada computador, ciclo por ciclo (para la gráfica). */
     private final HistorialUtilizacion historial = new HistorialUtilizacion();
+    private final LogEventos logEventos = new LogEventos(this);
 
     private final ListaEnlazada<Buffer> buffers = new ListaEnlazada<>();
 
     /** Latencia de red configurable para accesos remotos a buffers (ciclos). */
     private int latenciaRedCiclos = 3;
+
+    /**
+     * Si es true, el reloj sigue avanzando ciclo a ciclo aun cuando no haya procesos
+     * activos, manteniendo la simulación en marcha y la CPU ociosa.
+     * Si es false, el reloj espera síncronamente a que llegue trabajo nuevo.
+     */
+    private volatile boolean mantenerRelojActivo = false;
+    private volatile boolean notificadoFinOcioso = false;
+
+    public boolean isMantenerRelojActivo() {
+        return mantenerRelojActivo;
+    }
+
+    public void setMantenerRelojActivo(boolean mantenerRelojActivo) {
+        this.mantenerRelojActivo = mantenerRelojActivo;
+    }
 
     public int getLatenciaRedCiclos() {
         return latenciaRedCiclos;
@@ -104,16 +121,18 @@ public class Simulador {
         if (buffer == null) {
             return;
         }
-        if (buscarBuffer(buffer.getId()) != null) {
-            return;
-        }
-        buffers.agregar(buffer);
-        Iterador<Computador> it = computadores.iterador();
-        while (it.haySiguiente()) {
-            Computador c = it.siguiente();
-            if (c.getId() == buffer.getIdComputadorAnfitrion()) {
-                c.registrarBuffer(buffer);
+        mutexEstado.acquireUninterruptibly();
+        try {
+            if (buscarBuffer(buffer.getId()) != null) {
+                return;
             }
+            buffers.agregar(buffer);
+            Computador anfitrion = buscarComputador(buffer.getIdComputadorAnfitrion());
+            if (anfitrion != null) {
+                anfitrion.registrarBuffer(buffer);
+            }
+        } finally {
+            mutexEstado.release();
         }
     }
 
@@ -141,6 +160,10 @@ public class Simulador {
      */
     public HistorialUtilizacion getHistorialUtilizacion() {
         return historial;
+    }
+
+    public LogEventos getLogEventos() {
+        return logEventos;
     }
 
     public Simulador() {
@@ -208,6 +231,7 @@ public class Simulador {
                                 + proceso.getNombre() + "'.");
             }
             destino.recibirProceso(proceso);
+            notificadoFinOcioso = false;
         } finally {
             mutexEstado.release();
         }
@@ -249,9 +273,33 @@ public class Simulador {
     private int darPaso() {
         mutexEstado.acquireUninterruptibly();
         try {
-            if (!hayTrabajoPendiente()) {
-                return PASO_OCIOSO;
+            boolean hayTrabajo = hayTrabajoPendiente();
+            if (!hayTrabajo) {
+                // Manejar el estado de la CPU limpiamente en todos los computadores
+                Iterador<Computador> it = computadores.iterador();
+                while (it.haySiguiente()) {
+                    Computador c = it.siguiente();
+                    if (c != null && c.getCantidadNuevos() == 0 && c.getPlanificador().estaVacio() && c.getCantidadBloqueados() == 0) {
+                        if (!c.getCpu().estaOciosa()) {
+                            c.getCpu().liberar();
+                        }
+                    }
+                }
+                if (!notificadoFinOcioso && tieneProcesosCreados()) {
+                    notificadoFinOcioso = true;
+                    if (logEventos != null) {
+                        logEventos.registrar(LogEventos.TipoEvento.OTRO,
+                                "Sin procesos activos en el clúster (Nuevos: 0, Listos: 0, Bloqueados: 0). CPU ociosa a la espera de nuevos procesos (ciclo "
+                                        + reloj.getCicloActual() + ").");
+                    }
+                }
+                if (!mantenerRelojActivo) {
+                    return PASO_OCIOSO;
+                }
+            } else {
+                notificadoFinOcioso = false;
             }
+
             if (reloj.getCicloActual() >= ciclosMaximos) {
                 return PASO_LIMITE;
             }
@@ -261,6 +309,17 @@ public class Simulador {
         } finally {
             mutexEstado.release();
         }
+    }
+
+    private boolean tieneProcesosCreados() {
+        Iterador<Computador> it = computadores.iterador();
+        while (it.haySiguiente()) {
+            Computador c = it.siguiente();
+            if (c != null && (c.getCantidadTerminados() > 0 || c.getCantidadNuevos() > 0 || c.getCantidadBloqueados() > 0 || !c.getPlanificador().estaVacio())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -424,15 +483,17 @@ public class Simulador {
         return !hayTrabajoPendiente();
     }
 
-    private Computador buscarComputador(int id) {
+    public Computador buscarComputador(int id) {
+        // 1. Buscar por ID de computador exacto
         Iterador<Computador> iterador = computadores.iterador();
         while (iterador.haySiguiente()) {
             Computador computador = iterador.siguiente();
-            if (computador.getId() == id) {
+            if (computador != null && computador.getId() == id) {
                 return computador;
             }
         }
-        return null;
+        // 2. Si no coincide con ningún ID, verificar si se pasó un índice numérico (base 0 o base 1)
+        return computadores.obtenerSeguro(id);
     }
 
     /** Reloj global de la simulación. */

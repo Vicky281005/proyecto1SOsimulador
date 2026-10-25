@@ -55,6 +55,7 @@ public class Computador implements ComponenteReloj {
         this.nombre = (nombre != null && !nombre.isEmpty()) ? nombre : ("Computador-" + id);
         this.cpu = new CPU(this.nombre + " CPU");
         this.planificador = new Planificador(politica);
+        this.planificador.setComputador(this);
         this.nuevos = new ListaEnlazada<>();
         this.bloqueados = new ListaEnlazada<>();
         this.terminados = new ListaEnlazada<>();
@@ -192,8 +193,11 @@ public class Computador implements ComponenteReloj {
                     return true;
                 }
                 if (!buffer.getMutex().esperar(proceso)) {
-                    // devolver vacios
-                    buffer.getVacios().senalizar();
+                    // Deshacer la reserva de vacíos para no desbalancear la invariante si el mutex está ocupado
+                    PCB despVacio = buffer.getVacios().senalizar();
+                    if (despVacio != null) {
+                        despertarProcesoCluster(despVacio);
+                    }
                     bloquearEnSemaforo(proceso, buffer.getMutex().getSemaforo(), MotivoBloqueo.MUTEX, buffer.getId());
                     return true;
                 }
@@ -220,12 +224,12 @@ public class Computador implements ComponenteReloj {
                 // signal(mutex)
                 PCB despertadoMutex = buffer.getMutex().senalizar();
                 if (despertadoMutex != null) {
-                    despertarProceso(despertadoMutex);
+                    despertarProcesoCluster(despertadoMutex);
                 }
                 // signal(llenos)
                 PCB despertadoLlenos = buffer.getLlenos().senalizar();
                 if (despertadoLlenos != null) {
-                    despertarProceso(despertadoLlenos);
+                    despertarProcesoCluster(despertadoLlenos);
                 }
                 return false;
             }
@@ -235,7 +239,10 @@ public class Computador implements ComponenteReloj {
                     return true;
                 }
                 if (!buffer.getMutex().esperar(proceso)) {
-                    buffer.getLlenos().senalizar();
+                    PCB despLleno = buffer.getLlenos().senalizar();
+                    if (despLleno != null) {
+                        despertarProcesoCluster(despLleno);
+                    }
                     bloquearEnSemaforo(proceso, buffer.getMutex().getSemaforo(), MotivoBloqueo.MUTEX, buffer.getId());
                     return true;
                 }
@@ -254,17 +261,21 @@ public class Computador implements ComponenteReloj {
                     proceso.bloquear(MotivoBloqueo.LATENCIA_RED, buffer.getId());
                     planificador.eliminarListo(proceso);
                     bloqueados.agregar(proceso);
+                    simulacion.LogEventos logRem2 = (simulador != null) ? simulador.getLogEventos() : null;
+                    if (logRem2 != null) {
+                        logRem2.registrar(simulacion.LogEventos.TipoEvento.ACCESO_REMOTO, "Acceso remoto LATENCIA_RED: " + proceso.getNombre() + " -> buffer " + buffer.getId() + " (" + nombre + " != PC anfitrión)");
+                    }
                     return true;
                 }
                 buffer.extraer();
                 proceso.incrementarElementosConsumidos();
                 PCB despertadoMutex2 = buffer.getMutex().senalizar();
                 if (despertadoMutex2 != null) {
-                    despertarProceso(despertadoMutex2);
+                    despertarProcesoCluster(despertadoMutex2);
                 }
                 PCB despertadoVacios = buffer.getVacios().senalizar();
                 if (despertadoVacios != null) {
-                    despertarProceso(despertadoVacios);
+                    despertarProcesoCluster(despertadoVacios);
                 }
                 return false;
             }
@@ -280,7 +291,7 @@ public class Computador implements ComponenteReloj {
                 Semaforo s2 = buffer.getVacios();
                 PCB despertado = s2.senalizar();
                 if (despertado != null) {
-                    despertarProceso(despertado);
+                    despertarProcesoCluster(despertado);
                 }
                 return false;
             }
@@ -317,6 +328,10 @@ public class Computador implements ComponenteReloj {
             proceso.setEstado(EstadoProceso.LISTO);
             planificador.encolarListo(proceso);
             evaluarDesalojo(0);
+            simulacion.LogEventos logAdm = (simulador != null) ? simulador.getLogEventos() : null;
+            if (logAdm != null) {
+                logAdm.registrar(simulacion.LogEventos.TipoEvento.ADMISION, "Admitido " + proceso.getNombre() + " en " + nombre);
+            }
         }
     }
 
@@ -334,8 +349,66 @@ public class Computador implements ComponenteReloj {
             despachar(cicloActual);
             return;
         }
+        if (siguiente.getTiempoRestante() == 0) {
+            terminar(siguiente, cicloActual);
+            despachar(cicloActual);
+            return;
+        }
         siguiente.setEstado(EstadoProceso.EJECUCION);
         cpu.cargarProceso(siguiente);
+        simulacion.LogEventos logDesp = (simulador != null) ? simulador.getLogEventos() : null;
+        if (logDesp != null) {
+            logDesp.registrar(simulacion.LogEventos.TipoEvento.DESPACHO, "Despachado " + siguiente.getNombre() + " en " + nombre + " (ciclo " + cicloActual + ")");
+        }
+    }
+
+    /**
+     * Libera de forma segura recursos retenidos por un proceso que termina o muere.
+     */
+    private void liberarRecursosProceso(PCB proceso) {
+        if (proceso == null) {
+            return;
+        }
+        // Si estaba en la cola de algún semáforo de buffer, desvincularlo para no dejarlo como proceso fantasma
+        if (proceso.getBufferBloqueadoId() != null && !proceso.getBufferBloqueadoId().isEmpty()) {
+            Buffer buffer = (simulador != null) ? simulador.buscarBuffer(proceso.getBufferBloqueadoId()) : null;
+            if (buffer != null) {
+                buffer.getVacios().remover(proceso);
+                buffer.getLlenos().remover(proceso);
+                buffer.getMutex().remover(proceso);
+            }
+        }
+
+        // Si tenía operación remota pendiente con mutex retenido, restituir recursos y despertar
+        if (proceso.isMutexRemotoRetenido() && proceso.getOperacionRemotaPendiente() != null) {
+            String bid = proceso.getBufferRemotoPendienteId();
+            if (bid == null || bid.isEmpty()) {
+                bid = proceso.getBufferBloqueadoId();
+            }
+            Buffer buffer = (simulador != null) ? simulador.buscarBuffer(bid) : null;
+            if (buffer != null) {
+                try {
+                    PCB despRecurso = null;
+                    if (proceso.getOperacionRemotaPendiente() == TipoInstruccion.PRODUCIR) {
+                        despRecurso = buffer.getVacios().senalizar();
+                    } else if (proceso.getOperacionRemotaPendiente() == TipoInstruccion.CONSUMIR) {
+                        despRecurso = buffer.getLlenos().senalizar();
+                    }
+                    if (despRecurso != null) {
+                        despertarProcesoCluster(despRecurso);
+                    }
+                    PCB despMutex = buffer.getMutex().senalizar();
+                    if (despMutex != null) {
+                        despertarProcesoCluster(despMutex);
+                    }
+                } catch (Exception ignored) {
+                }
+            }
+            proceso.limpiarOperacionRemotaPendiente();
+        }
+
+        bloqueados.eliminar(proceso);
+        planificador.eliminarListo(proceso);
     }
 
     /** Cierra un proceso que agotó su programa: libera RAM y CPU. */
@@ -343,19 +416,29 @@ public class Computador implements ComponenteReloj {
         if (proceso == null) {
             return;
         }
+        liberarRecursosProceso(proceso);
+
         proceso.setEstado(EstadoProceso.TERMINADO);
         if (proceso.getCicloFin() <= 0) {
             proceso.setCicloFin(cicloActual);
         }
         memoriaDisponible += proceso.getMemoriaAsignada();
-        cpu.liberar();
+        if (cpu.getProcesoActual() == proceso) {
+            cpu.liberar();
+        }
         terminados.agregar(proceso);
+        simulacion.LogEventos logTerm = (simulador != null) ? simulador.getLogEventos() : null;
+        if (logTerm != null) {
+            logTerm.registrar(simulacion.LogEventos.TipoEvento.TERMINADO, "Terminado " + proceso.getNombre() + " en " + nombre);
+        }
     }
 
     private void terminarPorDeadline(PCB proceso, long cicloActual) {
         if (proceso == null) {
             return;
         }
+        liberarRecursosProceso(proceso);
+
         proceso.setDeadlineCumplido(false);
         proceso.setEstado(EstadoProceso.TERMINADO);
         if (proceso.getCicloFin() <= 0) {
@@ -366,6 +449,10 @@ public class Computador implements ComponenteReloj {
             cpu.liberar();
         }
         terminados.agregar(proceso);
+        simulacion.LogEventos logDl = (simulador != null) ? simulador.getLogEventos() : null;
+        if (logDl != null) {
+            logDl.registrar(simulacion.LogEventos.TipoEvento.DEADLINE_VENCIDO, "Deadline vencido: " + proceso.getNombre() + " en " + nombre);
+        }
     }
 
     /**
@@ -392,11 +479,40 @@ public class Computador implements ComponenteReloj {
         // Eliminar de listos si estuviera
         planificador.eliminarListo(proceso);
         bloqueados.agregar(proceso);
+        simulacion.LogEventos logBlk = (simulador != null) ? simulador.getLogEventos() : null;
+        if (logBlk != null) {
+            logBlk.registrar(simulacion.LogEventos.TipoEvento.BLOQUEO, "Bloqueado " + proceso.getNombre() + " en " + nombre + " por " + (motivo != null ? motivo : MotivoBloqueo.NINGUNO));
+        }
         return true;
     }
 
     /**
      * Despierta al proceso indicado y lo pasa a la cola de listos.
+     *
+     * @param proceso proceso a despertar.
+     */
+    /**
+     * Despierta un proceso en su computador de origen. Evita que un computador
+     * local despierte un proceso ajeno en sus propias colas (migración indebida).
+     *
+     * @param proceso proceso a despertar.
+     */
+    public void despertarProcesoCluster(PCB proceso) {
+        if (proceso == null) {
+            return;
+        }
+        if (simulador != null) {
+            Computador compDestino = simulador.buscarComputador(proceso.getComputadorAsignado());
+            if (compDestino != null) {
+                compDestino.despertarProceso(proceso);
+                return;
+            }
+        }
+        despertarProceso(proceso);
+    }
+
+    /**
+     * Despierta al proceso indicado y lo pasa a la cola de listos de este computador.
      *
      * @param proceso proceso a despertar.
      */
@@ -409,10 +525,14 @@ public class Computador implements ComponenteReloj {
         proceso.setMotivoBloqueo(MotivoBloqueo.NINGUNO);
         proceso.setCiclosBloqueoRestantes(0);
         planificador.encolarListo(proceso);
+        simulacion.LogEventos logDesb = (simulador != null) ? simulador.getLogEventos() : null;
+        if (logDesb != null) {
+            logDesb.registrar(simulacion.LogEventos.TipoEvento.DESBLOQUEO, "Desbloqueado " + proceso.getNombre() + " en " + nombre);
+        }
     }
 
     /**
-     * Intenta despertar procesos del semáforo indicado.
+     * Intenta despertar procesos del semáforo indicado en su computador de origen.
      *
      * @param semaforo semáforo sobre el que se hizo señal.
      * @return true si se despertó algún proceso.
@@ -425,20 +545,38 @@ public class Computador implements ComponenteReloj {
         if (p == null) {
             return false;
         }
-        // Verificar que esté bloqueado en este computador
-        despertarProceso(p);
+        despertarProcesoCluster(p);
         return true;
     }
 
     private void revisarDeadlines(long cicloActual) {
+        ListaEnlazada<PCB> listosVencidos = new ListaEnlazada<>();
         Iterador<PCB> it = planificador.iteradorListos();
         while (it.haySiguiente()) {
             PCB p = it.siguiente();
-            if (p.verificarDeadline(cicloActual) && p.getTiempoRestante() > 0) {
-                planificador.eliminarListo(p);
-                terminarPorDeadline(p, cicloActual);
-                break;
+            if (p != null && p.verificarDeadline(cicloActual) && p.getTiempoRestante() > 0) {
+                listosVencidos.agregar(p);
             }
+        }
+        Iterador<PCB> itLv = listosVencidos.iterador();
+        while (itLv.haySiguiente()) {
+            PCB p = itLv.siguiente();
+            planificador.eliminarListo(p);
+            terminarPorDeadline(p, cicloActual);
+        }
+
+        ListaEnlazada<PCB> blkVencidos = new ListaEnlazada<>();
+        Iterador<PCB> itb = bloqueados.iterador();
+        while (itb.haySiguiente()) {
+            PCB p = itb.siguiente();
+            if (p != null && p.verificarDeadline(cicloActual) && p.getTiempoRestante() > 0) {
+                blkVencidos.agregar(p);
+            }
+        }
+        Iterador<PCB> itBv = blkVencidos.iterador();
+        while (itBv.haySiguiente()) {
+            PCB p = itBv.siguiente();
+            terminarPorDeadline(p, cicloActual);
         }
     }
 
@@ -446,21 +584,22 @@ public class Computador implements ComponenteReloj {
         if (bloqueados.estaVacia()) {
             return;
         }
-        ListaEnlazada<PCB> paraDespertar = new ListaEnlazada<>();
+        ListaEnlazada<PCB> listosParaDespertar = new ListaEnlazada<>();
         Iterador<PCB> it = bloqueados.iterador();
         while (it.haySiguiente()) {
             PCB p = it.siguiente();
             if (p == null) {
                 continue;
             }
-            if (p.getMotivoBloqueo() == MotivoBloqueo.LATENCIA_RED && p.getOperacionRemotaPendiente() != null
+            if (p.getMotivoBloqueo() == MotivoBloqueo.LATENCIA_RED
+                    && p.getOperacionRemotaPendiente() != null
                     && p.isMutexRemotoRetenido()) {
                 long restantes = p.getCiclosBloqueoRestantes();
                 if (restantes > 0) {
                     p.setCiclosBloqueoRestantes(restantes - 1);
                     continue;
                 }
-                // Completar operación remota
+                // Latencia cumplida: completar la operación en el buffer remoto
                 Buffer buffer = null;
                 if (simulador != null) {
                     String bid = p.getBufferRemotoPendienteId();
@@ -477,59 +616,44 @@ public class Computador implements ComponenteReloj {
                         buffer.extraer();
                         p.incrementarElementosConsumidos();
                     }
-                    // Liberar mutex y despertar
+                    // Liberar mutex y despertar a quien espere por el mutex
                     PCB despertadoMutex = buffer.getMutex().senalizar();
-                    if (despertadoMutex != null && despertadoMutex != p) {
-                        paraDespertar.agregar(despertadoMutex);
+                    if (despertadoMutex != null) {
+                        despertarProcesoCluster(despertadoMutex);
                     }
+                    // Señalizar el recurso correspondiente (llenos tras producir, vacios tras consumir)
                     if (p.getOperacionRemotaPendiente() == TipoInstruccion.PRODUCIR) {
                         PCB despertadoLlenos = buffer.getLlenos().senalizar();
-                        if (despertadoLlenos != null && despertadoLlenos != p) {
-                            paraDespertar.agregar(despertadoLlenos);
+                        if (despertadoLlenos != null) {
+                            despertarProcesoCluster(despertadoLlenos);
                         }
                     } else if (p.getOperacionRemotaPendiente() == TipoInstruccion.CONSUMIR) {
                         PCB despertadoVacios = buffer.getVacios().senalizar();
-                        if (despertadoVacios != null && despertadoVacios != p) {
-                            paraDespertar.agregar(despertadoVacios);
+                        if (despertadoVacios != null) {
+                            despertarProcesoCluster(despertadoVacios);
                         }
                     }
                 }
                 p.limpiarOperacionRemotaPendiente();
-                paraDespertar.agregar(p);
+                listosParaDespertar.agregar(p);
             }
         }
-        // Desbloquear
-        Iterador<PCB> ides = paraDespertar.iterador();
+
+        // Desbloquear procesos que completaron su latencia
+        Iterador<PCB> ides = listosParaDespertar.iterador();
         while (ides.haySiguiente()) {
             PCB dp = ides.siguiente();
-            if (dp == pActualMutex(bufferDp(dp))) {
-                // no duplicar
-            }
             bloqueados.eliminar(dp);
-            if (dp.getMotivoBloqueo() == MotivoBloqueo.LATENCIA_RED) {
-                dp.setEstado(EstadoProceso.LISTO);
-                dp.setMotivoBloqueo(MotivoBloqueo.NINGUNO);
-                dp.setCiclosBloqueoRestantes(0);
-                planificador.encolarListo(dp);
+            dp.setEstado(EstadoProceso.LISTO);
+            dp.setMotivoBloqueo(MotivoBloqueo.NINGUNO);
+            dp.setCiclosBloqueoRestantes(0);
+            dp.avanzarPasoCpu(cicloActual);
+            if (dp.getTiempoRestante() == 0) {
+                terminar(dp, cicloActual);
             } else {
-                despertarProceso(dp);
+                planificador.encolarListo(dp);
             }
         }
-    }
-
-    private PCB pActualMutex(Buffer b) {
-        return null;
-    }
-
-    private Buffer bufferDp(PCB p) {
-        if (p == null || simulador == null) {
-            return null;
-        }
-        String bid = p.getBufferRemotoPendienteId();
-        if (bid == null || bid.isEmpty()) {
-            bid = p.getBufferBloqueadoId();
-        }
-        return simulador.buscarBuffer(bid);
     }
 
     private void evaluarDesalojo(long cicloActual) {
@@ -587,8 +711,21 @@ public class Computador implements ComponenteReloj {
         cpu.cargarProceso(siguiente);
     }
 
+    /**
+     * Limpia la CPU si el proceso que estaba en ella ya no es ejecutable o terminó.
+     */
+    public void limpiarCpuSiOciosa() {
+        if (!cpu.estaOciosa()) {
+            PCB actual = cpu.getProcesoActual();
+            if (actual == null || actual.getTiempoRestante() == 0 || actual.getEstado() == EstadoProceso.TERMINADO) {
+                cpu.liberar();
+            }
+        }
+    }
+
     /** Indica si no queda nada por hacer (CPU ociosa y todas las colas vacías). */
     public boolean sinTrabajoPendiente() {
+        limpiarCpuSiOciosa();
         return cpu.estaOciosa()
                 && planificador.estaVacio()
                 && nuevos.estaVacia()
