@@ -91,6 +91,15 @@ public class Semaforo {
     }
 
     /**
+     * Alias de {@link #senalizar()} (nomenclatura estándar en inglés).
+     *
+     * @return el proceso despertado con permiso reservado, o {@code null} si nadie esperaba.
+     */
+    public synchronized PCB signal() {
+        return senalizar();
+    }
+
+    /**
      * Restaura un recurso sin despertar a procesos en espera.
      * Usado para deshacer una operación cuando un proceso muere antes de completar.
      */
@@ -119,9 +128,8 @@ public class Semaforo {
         colaEspera.eliminar(proceso);
         boolean teniaReservado = permisosReservados.eliminar(proceso);
         if (teniaReservado && !colaEspera.estaVacia()) {
-            PCB siguiente = colaEspera.eliminarPrimero();
-            permisosReservados.agregar(siguiente);
-            return siguiente;
+            valor--;
+            return colaEspera.obtener(0);
         }
         return null;
     }

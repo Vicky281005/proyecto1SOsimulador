@@ -91,6 +91,10 @@ public class Buffer {
         return idComputadorAnfitrion;
     }
 
+    public int getIdComputadorHost() {
+        return idComputadorAnfitrion;
+    }
+
     public int getCantidadElementos() {
         return elementos.getTamano();
     }

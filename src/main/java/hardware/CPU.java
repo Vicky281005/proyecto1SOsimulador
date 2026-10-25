@@ -61,6 +61,22 @@ public class CPU implements ComponenteReloj {
         this.ciclosProcesoActual = 0;
     }
 
+    /**
+     * Desaloja el proceso en ejecución de la CPU. Alias de {@link #liberar()}.
+     */
+    public void desalojar() {
+        liberar();
+    }
+
+    /**
+     * Asigna un proceso a la CPU para su ejecución. Alias de {@link #cargarProceso(PCB)}.
+     *
+     * @param proceso proceso a ejecutar.
+     */
+    public void asignar(PCB proceso) {
+        cargarProceso(proceso);
+    }
+
     /** Indica si la CPU no tiene ningún proceso cargado. */
     public boolean estaOciosa() {
         return procesoActual == null;

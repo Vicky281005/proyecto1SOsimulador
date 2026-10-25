@@ -33,7 +33,7 @@ public class Planificador {
      *
      * @param proceso proceso que pasa a estar listo.
      */
-    public void encolarListo(PCB proceso) {
+    public synchronized void encolarListo(PCB proceso) {
         politica.encolar(listos, proceso);
     }
 
@@ -43,7 +43,7 @@ public class Planificador {
      * @param cicloActual ciclo de reloj en el que se realiza la selección.
      * @return el proceso elegido, o {@code null} si no hay listos.
      */
-    public PCB seleccionarSiguiente(long cicloActual) {
+    public synchronized PCB seleccionarSiguiente(long cicloActual) {
         PCB siguiente = politica.seleccionar(listos, cicloActual);
         politica.reordenar(listos, cicloActual);
         return siguiente;
@@ -54,7 +54,7 @@ public class Planificador {
      *
      * @return el candidato a ejecutar, o {@code null} si la cola está vacía.
      */
-    public PCB peekSiguiente() {
+    public synchronized PCB peekSiguiente() {
         if (listos.estaVacia()) {
             return null;
         }
@@ -66,7 +66,7 @@ public class Planificador {
      *
      * @return true si la política puede desalojar.
      */
-    public boolean esApropiativa() {
+    public synchronized boolean esApropiativa() {
         return politica.esApropiativa();
     }
 
@@ -75,7 +75,7 @@ public class Planificador {
      *
      * @return quantum en ciclos, o -1 si no aplica.
      */
-    public int getQuantum() {
+    public synchronized int getQuantum() {
         return politica.getQuantum();
     }
 
@@ -84,7 +84,7 @@ public class Planificador {
      *
      * @param nuevoQuantum nuevo valor de quantum (debe ser > 0).
      */
-    public void setQuantum(int nuevoQuantum) {
+    public synchronized void setQuantum(int nuevoQuantum) {
         if (nuevoQuantum <= 0) {
             throw new IllegalArgumentException("El quantum debe ser mayor que cero.");
         }
@@ -106,17 +106,17 @@ public class Planificador {
     }
 
     /** Indica si no hay ningún proceso listo. */
-    public boolean estaVacio() {
+    public synchronized boolean estaVacio() {
         return listos.estaVacia();
     }
 
     /** Cantidad de procesos en la cola de listos. */
-    public int getCantidadListos() {
+    public synchronized int getCantidadListos() {
         return listos.getTamano();
     }
 
     /** Política de planificación activa. */
-    public AlgoritmoPlanificacion getPolitica() {
+    public synchronized AlgoritmoPlanificacion getPolitica() {
         return politica;
     }
 
@@ -126,14 +126,14 @@ public class Planificador {
      * @param proceso proceso a eliminar.
      * @return true si se eliminó.
      */
-    public boolean eliminarListo(PCB proceso) {
+    public synchronized boolean eliminarListo(PCB proceso) {
         if (proceso == null) {
             return false;
         }
         return listos.eliminar(proceso);
     }
 
-    public void setComputador(Computador computador) {
+    public synchronized void setComputador(Computador computador) {
         this.computador = computador;
     }
 
@@ -143,7 +143,7 @@ public class Planificador {
      *
      * @param politica nueva política.
      */
-    public void setPolitica(AlgoritmoPlanificacion politica) {
+    public synchronized void setPolitica(AlgoritmoPlanificacion politica) {
         if (politica == null) {
             throw new IllegalArgumentException("La política de planificación no puede ser nula.");
         }
@@ -164,7 +164,7 @@ public class Planificador {
      * Reorganiza la cola de listos en caliente aplicando el orden de la política activa
      * y evalúa el desalojo inmediato sobre la CPU si la política lo exige.
      */
-    public void reorganizarListos() {
+    public synchronized void reorganizarListos() {
         if (!listos.estaVacia()) {
             ListaEnlazada<PCB> temporal = new ListaEnlazada<>();
             while (!listos.estaVacia()) {
@@ -183,7 +183,7 @@ public class Planificador {
 
 
     /** Iterador sobre la cola de listos, para observarla sin exponer la lista interna. */
-    public Iterador<PCB> iteradorListos() {
+    public synchronized Iterador<PCB> iteradorListos() {
         return listos.iterador();
     }
 }

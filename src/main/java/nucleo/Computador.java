@@ -225,6 +225,12 @@ public class Computador implements ComponenteReloj {
                     proceso.bloquear(MotivoBloqueo.LATENCIA_RED, buffer.getId());
                     planificador.eliminarListo(proceso);
                     bloqueados.agregar(proceso);
+                    simulacion.LogEventos logRem1 = (simulador != null) ? simulador.getLogEventos() : null;
+                    if (logRem1 != null) {
+                        logRem1.registrar(simulacion.LogEventos.TipoEvento.ACCESO_REMOTO,
+                                "Acceso remoto LATENCIA_RED: " + proceso.getNombre() + " -> buffer " + buffer.getId()
+                                        + " (" + nombre + " != PC anfitrión)");
+                    }
                     return true;
                 }
                 buffer.insertar(new Object());
@@ -400,19 +406,26 @@ public class Computador implements ComponenteReloj {
         }
         // Si estaba en la cola de algún semáforo de buffer, desvincularlo para no dejarlo como proceso fantasma.
         // Si tenía un permiso reservado, transferir dicho permiso y despertar al siguiente proceso en espera.
-        if (proceso.getBufferBloqueadoId() != null && !proceso.getBufferBloqueadoId().isEmpty()) {
-            Buffer buffer = (simulador != null) ? simulador.buscarBuffer(proceso.getBufferBloqueadoId()) : null;
+        String bufferIdParaRemover = proceso.getBufferBloqueadoId();
+        if (bufferIdParaRemover == null || bufferIdParaRemover.isEmpty()) {
+            bufferIdParaRemover = proceso.getIdBufferTarget();
+        }
+        if (bufferIdParaRemover != null && !bufferIdParaRemover.isEmpty()) {
+            Buffer buffer = (simulador != null) ? simulador.buscarBuffer(bufferIdParaRemover) : null;
             if (buffer != null) {
                 PCB despV = buffer.getVacios().remover(proceso);
                 if (despV != null) {
+                    buffer.getVacios().signal();
                     despertarProcesoCluster(despV);
                 }
                 PCB despL = buffer.getLlenos().remover(proceso);
                 if (despL != null) {
+                    buffer.getLlenos().signal();
                     despertarProcesoCluster(despL);
                 }
                 PCB despM = buffer.getMutex().remover(proceso);
                 if (despM != null) {
+                    buffer.getMutex().signal();
                     despertarProcesoCluster(despM);
                 }
             }
@@ -572,11 +585,11 @@ public class Computador implements ComponenteReloj {
      * @param proceso proceso a despertar.
      */
     public void despertarProcesoCluster(PCB proceso) {
-        if (proceso == null) {
+        if (proceso == null || proceso.getEstado() != EstadoProceso.BLOQUEADO) {
             return;
         }
         if (simulador != null) {
-            Computador compDestino = simulador.buscarComputador(proceso.getComputadorAsignado());
+            Computador compDestino = simulador.buscarComputador(proceso.getIdComputador());
             if (compDestino != null) {
                 compDestino.despertarProceso(proceso);
                 return;
@@ -591,13 +604,11 @@ public class Computador implements ComponenteReloj {
      * @param proceso proceso a despertar.
      */
     public void despertarProceso(PCB proceso) {
-        if (proceso == null) {
+        if (proceso == null || proceso.getEstado() != EstadoProceso.BLOQUEADO) {
             return;
         }
         bloqueados.eliminar(proceso);
-        proceso.setEstado(EstadoProceso.LISTO);
-        proceso.setMotivoBloqueo(MotivoBloqueo.NINGUNO);
-        proceso.setCiclosBloqueoRestantes(0);
+        proceso.desbloquear();
         planificador.encolarListo(proceso);
         simulacion.LogEventos logDesb = (simulador != null) ? simulador.getLogEventos() : null;
         if (logDesb != null) {
@@ -769,14 +780,12 @@ public class Computador implements ComponenteReloj {
             return;
         }
         // Comparar
-        String nombrePol = planificador.getPolitica().getNombre();
         boolean desalojar = false;
-        if (nombrePol != null && nombrePol.toLowerCase().contains("prioridad")) {
-            // menor número = mayor prioridad
+        if (planificador.getPolitica() instanceof planificacion.Prioridades) {
             if (candidato.getPrioridad() < actual.getPrioridad()) {
                 desalojar = true;
             }
-        } else if (nombrePol != null && nombrePol.toLowerCase().contains("earliest") || (nombrePol != null && nombrePol.toLowerCase().contains("edf"))) {
+        } else if (planificador.getPolitica() instanceof planificacion.EDF) {
             if (candidato.getDeadlineAbsoluto() < actual.getDeadlineAbsoluto()) {
                 desalojar = true;
             }
@@ -788,15 +797,16 @@ public class Computador implements ComponenteReloj {
         if (siguiente == null) {
             return;
         }
-        cpu.liberar();
+        cpu.desalojar();
         actual.setEstado(EstadoProceso.LISTO);
         planificador.encolarListo(actual);
         if (siguiente.verificarDeadline(cicloActual)) {
             terminarPorDeadline(siguiente, cicloActual);
+            despachar(cicloActual);
             return;
         }
         siguiente.setEstado(EstadoProceso.EJECUCION);
-        cpu.cargarProceso(siguiente);
+        cpu.asignar(siguiente);
     }
 
     /**
@@ -841,7 +851,7 @@ public class Computador implements ComponenteReloj {
         return memoriaTotal;
     }
 
-    public long getMemoriaDisponible() {
+    public synchronized long getMemoriaDisponible() {
         return memoriaDisponible;
     }
 
@@ -851,7 +861,7 @@ public class Computador implements ComponenteReloj {
      * @param cantidad bytes/KB a reservar.
      * @return true si hay espacio suficiente.
      */
-    public boolean reservarMemoria(long cantidad) {
+    public synchronized boolean reservarMemoria(long cantidad) {
         if (cantidad <= 0) {
             return true;
         }
@@ -867,11 +877,11 @@ public class Computador implements ComponenteReloj {
      *
      * @param cantidad cantidad a liberar.
      */
-    public void liberarMemoria(long cantidad) {
+    public synchronized void liberarMemoria(long cantidad) {
         if (cantidad <= 0) {
             return;
         }
-        memoriaDisponible += cantidad;
+        memoriaDisponible = Math.min(memoriaTotal, memoriaDisponible + cantidad);
     }
 
     public int getCantidadNuevos() {

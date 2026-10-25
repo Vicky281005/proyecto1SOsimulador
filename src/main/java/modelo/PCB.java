@@ -332,4 +332,14 @@ public class PCB {
     public long getMemoriaRequerida() {
         return memoriaAsignada;
     }
+
+    public int getIdComputador() {
+        return computadorAsignado;
+    }
+
+    public void desbloquear() {
+        this.estado = EstadoProceso.LISTO;
+        this.motivoBloqueo = MotivoBloqueo.NINGUNO;
+        this.ciclosBloqueoRestantes = 0;
+    }
 }
