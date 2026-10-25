@@ -91,6 +91,10 @@ public class Buffer {
         return idComputadorAnfitrion;
     }
 
+    public int getIdComputadorHost() {
+        return idComputadorAnfitrion;
+    }
+
     public int getCantidadElementos() {
         return elementos.getTamano();
     }
@@ -127,12 +131,12 @@ public class Buffer {
         return llenos.getCantidadEsperando();
     }
 
-    public boolean insertar(Object elemento) {
+    public synchronized boolean insertar(Object elemento) {
         elementos.agregar(elemento);
         return true;
     }
 
-    public Object extraer() {
+    public synchronized Object extraer() {
         if (elementos.estaVacia()) {
             return null;
         }

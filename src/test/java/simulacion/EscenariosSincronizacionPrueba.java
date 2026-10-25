@@ -52,6 +52,7 @@ public class EscenariosSincronizacionPrueba {
         probarEscenario3_OperacionRemotaLatencia();
         probarEscenario4_MuerteDeadlineConsumidorBloqueado();
         probarEscenario5_CambioPoliticaEnCaliente();
+        probarEscenario6_Stress60ProcesosConcurrencia();
 
         System.out.println("\n===============================================================================");
         System.out.println("                       RESUMEN DE RESULTADOS");
@@ -321,5 +322,106 @@ public class EscenariosSincronizacionPrueba {
         }
         asegurar(logCambioDetectado, "Eventos de CAMBIO_POLITICA registrados en LogEventos");
         asegurar(pc1.sinTrabajoPendiente(), "Computador finalizó limpiamente todas las colas y CPU ociosa");
+    }
+
+    /**
+     * Escenario 6: Estrés de alta concurrencia con 60 procesos (30 productores y 30 consumidores)
+     * compitiendo por 2 buffers saturados en un clúster de 3 nodos con latencia de red.
+     */
+    public static void probarEscenario6_Stress60ProcesosConcurrencia() {
+        System.out.println("\n>>> ESCENARIO 6: Estrés concurrencia 60 procesos (30 productores, 30 consumidores)");
+        Simulador sim = new Simulador();
+        sim.setLatenciaRedCiclos(2);
+
+        Computador pc1 = new Computador(1, "PC-1", 10000, FabricaPoliticas.crear(PoliticaPlanificacion.FCFS));
+        Computador pc2 = new Computador(2, "PC-2", 10000, FabricaPoliticas.crear(PoliticaPlanificacion.ROUND_ROBIN, 2));
+        Computador pc3 = new Computador(3, "PC-3", 10000, FabricaPoliticas.crear(PoliticaPlanificacion.PRIORIDAD));
+
+        sim.registrarComputador(pc1);
+        sim.registrarComputador(pc2);
+        sim.registrarComputador(pc3);
+
+        Buffer buf1 = new Buffer("BUF-STRESS-1", 2, pc1.getId(), 4, pc1);
+        Buffer buf2 = new Buffer("BUF-STRESS-2", 2, pc2.getId(), 4, pc2);
+
+        sim.registrarBuffer(buf1);
+        sim.registrarBuffer(buf2);
+
+        long memIni1 = pc1.getMemoriaDisponible();
+        long memIni2 = pc2.getMemoriaDisponible();
+        long memIni3 = pc3.getMemoriaDisponible();
+
+        ListaEnlazada<PCB> listaProcesos = new ListaEnlazada<>();
+
+        // 30 productores y 30 consumidores distribuidos entre PC-1, PC-2 y PC-3
+        // 15 productores y 15 consumidores compitiendo por BUF-STRESS-1
+        // 15 productores y 15 consumidores compitiendo por BUF-STRESS-2
+        for (int i = 1; i <= 30; i++) {
+            int compId = ((i - 1) % 3) + 1;
+            String targetBuf = (i <= 15) ? "BUF-STRESS-1" : "BUF-STRESS-2";
+            PCB prod = new PCB("Prod-Stress-" + i, compId, TipoProceso.PRODUCTOR, (i % 5) + 1,
+                    50, 20000, targetBuf, 1, 1, crearPrograma(TipoInstruccion.PRODUCIR, 1), 0);
+            listaProcesos.agregar(prod);
+            sim.cargarProceso(prod);
+        }
+
+        for (int i = 1; i <= 30; i++) {
+            int compId = ((i - 1) % 3) + 1;
+            String targetBuf = (i <= 15) ? "BUF-STRESS-1" : "BUF-STRESS-2";
+            PCB cons = new PCB("Cons-Stress-" + i, compId, TipoProceso.CONSUMIDOR, (i % 5) + 1,
+                    50, 20000, targetBuf, 1, 1, crearPrograma(TipoInstruccion.CONSUMIR, 1), 0);
+            listaProcesos.agregar(cons);
+            sim.cargarProceso(cons);
+        }
+
+        sim.ejecutar();
+
+        int terminadosProd = 0;
+        int terminadosCons = 0;
+        int totalProducido = 0;
+        int totalConsumido = 0;
+
+        Iterador<PCB> itP = listaProcesos.iterador();
+        while (itP.haySiguiente()) {
+            PCB p = itP.siguiente();
+            if (p.getEstado() == EstadoProceso.TERMINADO) {
+                if (p.getTipo() == TipoProceso.PRODUCTOR) {
+                    terminadosProd++;
+                    totalProducido += p.getElementosProducidos();
+                } else if (p.getTipo() == TipoProceso.CONSUMIDOR) {
+                    terminadosCons++;
+                    totalConsumido += p.getElementosConsumidos();
+                }
+            }
+        }
+
+        asegurar(terminadosProd == 30, "Los 30 procesos productores completaron su ejecución");
+        asegurar(terminadosCons == 30, "Los 30 procesos consumidores completaron su ejecución");
+        asegurar(totalProducido == 30, "Exactamente 30 elementos producidos a través de ambos buffers");
+        asegurar(totalConsumido == 30, "Exactamente 30 elementos consumidos a través de ambos buffers");
+
+        asegurar(buf1.getValorVacios() + buf1.getValorLlenos() == buf1.getCapacidad(),
+                "Invariante semáforos BUF-1 intacta tras 30 operaciones: vacíos + llenos == capacidad");
+        asegurar(buf2.getValorVacios() + buf2.getValorLlenos() == buf2.getCapacidad(),
+                "Invariante semáforos BUF-2 intacta tras 30 operaciones: vacíos + llenos == capacidad");
+        asegurar(buf1.getValorMutex() == 1, "Mutex de BUF-1 liberado correctamente (valor 1)");
+        asegurar(buf2.getValorMutex() == 1, "Mutex de BUF-2 liberado correctamente (valor 1)");
+
+        asegurar(buf1.getCantidadEsperandoVacios() == 0, "Cero procesos esperando en vacíos de BUF-1");
+        asegurar(buf1.getCantidadEsperandoLlenos() == 0, "Cero procesos esperando en llenos de BUF-1");
+        asegurar(buf2.getCantidadEsperandoVacios() == 0, "Cero procesos esperando en vacíos de BUF-2");
+        asegurar(buf2.getCantidadEsperandoLlenos() == 0, "Cero procesos esperando en llenos de BUF-2");
+
+        asegurar(pc1.getCantidadBloqueados() == 0, "Cola de bloqueados limpia en PC-1 (0 bloqueados)");
+        asegurar(pc2.getCantidadBloqueados() == 0, "Cola de bloqueados limpia en PC-2 (0 bloqueados)");
+        asegurar(pc3.getCantidadBloqueados() == 0, "Cola de bloqueados limpia en PC-3 (0 bloqueados)");
+
+        asegurar(pc1.sinTrabajoPendiente(), "PC-1 finalizó sin trabajo pendiente");
+        asegurar(pc2.sinTrabajoPendiente(), "PC-2 finalizó sin trabajo pendiente");
+        asegurar(pc3.sinTrabajoPendiente(), "PC-3 finalizó sin trabajo pendiente");
+
+        asegurar(pc1.getMemoriaDisponible() == memIni1, "Memoria RAM liberada íntegramente en PC-1 tras terminar los procesos");
+        asegurar(pc2.getMemoriaDisponible() == memIni2 && pc3.getMemoriaDisponible() == memIni3,
+                "Memoria RAM liberada íntegramente en PC-2 y PC-3");
     }
 }

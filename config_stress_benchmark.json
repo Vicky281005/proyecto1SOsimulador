@@ -1,0 +1,99 @@
+{
+  "duracionCicloMs": 50,
+  "latenciaRedCiclos": 15,
+  "computadores": [
+    {
+      "id": 1,
+      "nombre": "PC-Alpha",
+      "memoriaTotal": 1000,
+      "politica": "EDF",
+      "quantum": 2
+    },
+    {
+      "id": 2,
+      "nombre": "PC-Beta",
+      "memoriaTotal": 1000,
+      "politica": "ROUND_ROBIN",
+      "quantum": 3
+    },
+    {
+      "id": 3,
+      "nombre": "PC-Gamma",
+      "memoriaTotal": 1000,
+      "politica": "PRIORIDAD",
+      "quantum": 2
+    }
+  ],
+  "buffers": [
+    {
+      "id": "BUF-ALPHA",
+      "capacidad": 2,
+      "idComputadorAnfitrion": 1,
+      "tamanoElemento": 4
+    },
+    {
+      "id": "BUF-BETA",
+      "capacidad": 2,
+      "idComputadorAnfitrion": 2,
+      "tamanoElemento": 4
+    }
+  ],
+  "procesos": [
+    {
+      "id": 1,
+      "nombre": "Prod-Alpha-Local",
+      "tipo": "PRODUCTOR",
+      "computadorAsignado": 1,
+      "instrucciones": 10,
+      "memoria": 982,
+      "prioridad": 1,
+      "deadline": 35,
+      "periodoES": 0,
+      "idBufferTarget": "BUF-ALPHA",
+      "ciclosPorAcceso": 1,
+      "elementosRequeridos": 1
+    },
+    {
+      "id": 2,
+      "nombre": "Cons-Beta-Local",
+      "tipo": "CONSUMIDOR",
+      "computadorAsignado": 2,
+      "instrucciones": 10,
+      "memoria": 982,
+      "prioridad": 1,
+      "deadline": 30,
+      "periodoES": 0,
+      "idBufferTarget": "BUF-BETA",
+      "ciclosPorAcceso": 1,
+      "elementosRequeridos": 1
+    },
+    {
+      "id": 3,
+      "nombre": "Prod-Gamma-Remoto",
+      "tipo": "PRODUCTOR",
+      "computadorAsignado": 3,
+      "instrucciones": 12,
+      "memoria": 495,
+      "prioridad": 2,
+      "deadline": 45,
+      "periodoES": 0,
+      "idBufferTarget": "BUF-BETA",
+      "ciclosPorAcceso": 1,
+      "elementosRequeridos": 1
+    },
+    {
+      "id": 4,
+      "nombre": "Cons-Gamma-Remoto",
+      "tipo": "CONSUMIDOR",
+      "computadorAsignado": 3,
+      "instrucciones": 12,
+      "memoria": 495,
+      "prioridad": 1,
+      "deadline": 50,
+      "periodoES": 0,
+      "idBufferTarget": "BUF-ALPHA",
+      "ciclosPorAcceso": 1,
+      "elementosRequeridos": 1
+    }
+  ]
+}
