@@ -17,6 +17,7 @@ public class Planificador {
 
     private final ListaEnlazada<PCB> listos;
     private AlgoritmoPlanificacion politica;
+    private Computador computador;
 
     public Planificador(AlgoritmoPlanificacion politica) {
         if (politica == null) {
@@ -106,6 +107,10 @@ public class Planificador {
         return listos.eliminar(proceso);
     }
 
+    public void setComputador(Computador computador) {
+        this.computador = computador;
+    }
+
     /**
      * Cambia la política de planificación en tiempo de ejecución.
      *
@@ -114,6 +119,15 @@ public class Planificador {
     public void setPolitica(AlgoritmoPlanificacion politica) {
         if (politica == null) {
             throw new IllegalArgumentException("La política de planificación no puede ser nula.");
+        }
+        simulacion.LogEventos log = null;
+        if (computador != null && computador.getSimulador() != null) {
+            log = computador.getSimulador().getLogEventos();
+        }
+        if (log != null) {
+            String ant = this.politica != null ? this.politica.getNombre() : "?";
+            String nue = politica.getNombre();
+            log.registrar(simulacion.LogEventos.TipoEvento.CAMBIO_POLITICA, "Cambio de política " + ant + " -> " + nue + " en " + (computador != null ? computador.getNombre() : ""));
         }
         this.politica = politica;
     }

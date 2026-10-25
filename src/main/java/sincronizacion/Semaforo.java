@@ -51,11 +51,34 @@ public class Semaforo {
      * Libera. Si hay procesos en espera despierta al primero, sino incrementa.
      */
     public synchronized PCB senalizar() {
+        valor++;
         if (!colaEspera.estaVacia()) {
             return colaEspera.eliminarPrimero();
         }
-        valor++;
         return null;
+    }
+
+    /**
+     * Restaura un recurso sin despertar a procesos en espera.
+     * Usado para deshacer una operación cuando un proceso muere antes de completar.
+     */
+    public synchronized void restaurar() {
+        valor++;
+    }
+
+    /**
+     * Remueve un proceso de la cola de espera si estaba en ella.
+     * Usado cuando un proceso es terminado antes de que se despierte (por ejemplo
+     * por vencimiento de deadline).
+     *
+     * @param proceso proceso a remover.
+     * @return true si el proceso estaba en la cola y fue removido.
+     */
+    public synchronized boolean remover(PCB proceso) {
+        if (proceso == null) {
+            return false;
+        }
+        return colaEspera.eliminar(proceso);
     }
 
     public synchronized int getCantidadEsperando() {

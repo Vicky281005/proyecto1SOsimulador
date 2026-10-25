@@ -34,6 +34,10 @@ public class SemaforoBinario {
         return semaforo.senalizar();
     }
 
+    public boolean remover(PCB proceso) {
+        return semaforo.remover(proceso);
+    }
+
     public Semaforo getSemaforo() {
         return semaforo;
     }

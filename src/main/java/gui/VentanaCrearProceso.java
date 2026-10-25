@@ -99,7 +99,7 @@ public class VentanaCrearProceso extends JDialog {
         setLocationRelativeTo(dueno);
     }
 
-    private void actualizarBuffers() {
+    public void actualizarBuffers() {
         comboBuffer.removeAllItems();
         Iterador<Buffer> it = simulador.iteradorBuffers();
         while (it.haySiguiente()) {
