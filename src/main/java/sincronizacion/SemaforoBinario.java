@@ -30,12 +30,15 @@ public class SemaforoBinario {
         return semaforo.esperar(proceso, MotivoBloqueo.MUTEX);
     }
 
-    public PCB senalizar() {
+    public synchronized PCB senalizar() {
+        if (semaforo.getValor() >= 1 && !semaforo.hayEsperando()) {
+            return null;
+        }
         return semaforo.senalizar();
     }
 
-    public PCB signal() {
-        return semaforo.signal();
+    public synchronized PCB signal() {
+        return senalizar();
     }
 
     public PCB remover(PCB proceso) {

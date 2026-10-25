@@ -4,15 +4,17 @@ import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
 import java.io.IOException;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Prueba estática automatizada para verificar la ausencia total de colecciones
  * de {@code java.util} en el código fuente de ÁvilaOS.
  *
- * <p>Escanea todos los archivos {@code .java} del proyecto y confirma que
- * ninguna clase haga uso de colecciones nativas de Java (List, ArrayList, Map,
- * HashMap, Set, HashSet, Queue, Deque, Vector, Stack, Collections, etc.),
- * garantizando el cumplimiento estricto de las restricciones del enunciado.</p>
+ * <p>Escanea todos los archivos {@code .java} del proyecto y confirma mediante
+ * expresiones regulares (Pattern) que ninguna clase haga uso de colecciones nativas
+ * de Java (List, ArrayList, Map, HashMap, Set, HashSet, Queue, Deque, Vector, Stack,
+ * Collections, etc.), garantizando el cumplimiento estricto de las restricciones del enunciado.</p>
  */
 public class EscaneoColeccionesProhibidasPrueba {
 
@@ -31,29 +33,13 @@ public class EscaneoColeccionesProhibidasPrueba {
         }
     }
 
-    private static final String[] COLECCIONES_PROHIBIDAS = {
-        "java.util.List",
-        "java.util.ArrayList",
-        "java.util.LinkedList",
-        "java.util.Map",
-        "java.util.HashMap",
-        "java.util.TreeMap",
-        "java.util.LinkedHashMap",
-        "java.util.Set",
-        "java.util.HashSet",
-        "java.util.TreeSet",
-        "java.util.Queue",
-        "java.util.Deque",
-        "java.util.ArrayDeque",
-        "java.util.PriorityQueue",
-        "java.util.Vector",
-        "java.util.Stack",
-        "java.util.Collection",
-        "java.util.Collections",
-        "java.util.Dictionary",
-        "java.util.Hashtable",
-        "java.util.*"
-    };
+    private static final Pattern PATRON_IMPORT_PROHIBIDO = Pattern.compile(
+            "^\\s*import\\s+java\\.util\\.(List|ArrayList|LinkedList|Map|HashMap|TreeMap|LinkedHashMap|Set|HashSet|TreeSet|Queue|Deque|ArrayDeque|PriorityQueue|Vector|Stack|Collection|Collections|Dictionary|Hashtable|\\*)\\s*;"
+    );
+
+    private static final Pattern PATRON_DECLARACION_INSTANCIACION = Pattern.compile(
+            "\\b(java\\.util\\.)?(List|ArrayList|LinkedList|Map|HashMap|TreeMap|LinkedHashMap|Set|HashSet|TreeSet|Queue|Deque|ArrayDeque|PriorityQueue|Vector|Stack|Collection)\\s*<|\\bnew\\s+(java\\.util\\.)?(ArrayList|LinkedList|HashMap|TreeMap|LinkedHashMap|HashSet|TreeSet|ArrayDeque|PriorityQueue|Vector|Stack)\\b|\\bjava\\.util\\.(Collections|Arrays\\.asList)\\b"
+    );
 
     public static void main(String[] args) {
         System.out.println("===============================================================================");
@@ -93,13 +79,15 @@ public class EscaneoColeccionesProhibidasPrueba {
                     if (trim.startsWith("//") || trim.startsWith("*") || trim.startsWith("/*")) {
                         continue;
                     }
-                    for (String prohibida : COLECCIONES_PROHIBIDAS) {
-                        if (trim.contains("import " + prohibida)
-                                || trim.contains(prohibida + "<")
-                                || trim.contains("new " + prohibida)) {
-                            totalViolaciones++;
-                            detalleViolaciones.agregar(f.getPath() + ":" + nroLinea + " -> " + trim);
-                        }
+                    Matcher mImport = PATRON_IMPORT_PROHIBIDO.matcher(trim);
+                    if (mImport.find()) {
+                        totalViolaciones++;
+                        detalleViolaciones.agregar(f.getPath() + ":" + nroLinea + " [Import prohibido] -> " + trim);
+                    }
+                    Matcher mUso = PATRON_DECLARACION_INSTANCIACION.matcher(trim);
+                    if (mUso.find()) {
+                        totalViolaciones++;
+                        detalleViolaciones.agregar(f.getPath() + ":" + nroLinea + " [Uso prohibido] -> " + trim);
                     }
                 }
             } catch (IOException e) {
@@ -118,6 +106,8 @@ public class EscaneoColeccionesProhibidasPrueba {
             }
         }
 
+        asegurar(PATRON_IMPORT_PROHIBIDO.matcher("import java.util.ArrayList;").find(), "Patrón regex para importaciones prohibidas validado");
+        asegurar(PATRON_DECLARACION_INSTANCIACION.matcher("new java.util.HashMap<String, String>()").find(), "Patrón regex para declaraciones e instanciaciones prohibidas validado");
         asegurar(totalViolaciones == 0, "Cero (0) usos de colecciones java.util detectados en el código fuente");
         asegurar(totalArchivos >= 50, "Cobertura exhaustiva (54 archivos del clúster)");
 

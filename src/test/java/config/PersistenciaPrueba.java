@@ -49,6 +49,7 @@ public class PersistenciaPrueba {
             probarConstruccionYEjecucionSimulador();
             probarEdicionTablaComputadores();
             probarQuantumRoundRobinEnEjecucionYProcesos();
+            probarBenchmarkStressJSON();
         } catch (Exception e) {
             System.err.println("Error no controlado durante las pruebas: " + e.getMessage());
             e.printStackTrace();
@@ -401,5 +402,41 @@ public class PersistenciaPrueba {
         } finally {
             VentanaConfiguracion.setModoPrueba(false);
         }
+    }
+
+    /**
+     * Prueba 8: Carga y ejecución del caso límite de benchmark (config_stress_benchmark.json).
+     * Verifica la estabilidad del clúster bajo condiciones extremas: RAM al 99%,
+     * latencia de red de 15 ciclos y plazos críticos.
+     */
+    public static void probarBenchmarkStressJSON() throws Exception {
+        System.out.println("\n>>> PRUEBA 8: Carga y ejecución de benchmark de estrés (config_stress_benchmark.json)");
+        File archivoBench = new File("config_stress_benchmark.json");
+        asegurar(archivoBench.exists(), "Archivo config_stress_benchmark.json existe en la raíz");
+
+        ConfiguracionSimulacion config = GestorPersistencia.cargarConfiguracion(archivoBench, FormatoPersistencia.JSON);
+        asegurar(config != null, "Configuración de benchmark cargada exitosamente");
+        asegurar(config.getLatenciaRedCiclos() == 15, "Latencia de red de 15 ciclos verificada");
+        asegurar(config.getComputadores().getTamano() == 3, "Clúster de benchmark contiene 3 computadores");
+        asegurar(config.getBuffers().getTamano() == 2, "Clúster de benchmark contiene 2 buffers");
+        asegurar(config.getProcesos().getTamano() == 4, "Clúster de benchmark contiene 4 procesos límite");
+
+        Simulador sim = config.aSimulador();
+        asegurar(sim != null, "Simulador instanciado desde configuración de benchmark");
+
+        Computador pc1 = sim.buscarComputador(1);
+        Computador pc2 = sim.buscarComputador(2);
+        Computador pc3 = sim.buscarComputador(3);
+
+        asegurar(pc1.getMemoriaDisponible() == 10, "PC-1 operando con RAM al 99% (10 MB libres de 1000 MB)");
+        asegurar(pc2.getMemoriaDisponible() == 10, "PC-2 operando con RAM al 99% (10 MB libres de 1000 MB)");
+        asegurar(pc3.getMemoriaDisponible() == 10, "PC-3 operando con RAM al 99% (10 MB libres de 1000 MB)");
+
+        sim.ejecutar();
+
+        asegurar(sim.getCicloActual() > 0, "Simulador de benchmark ejecutó ciclos de reloj bajo condiciones extremas");
+        asegurar(sim.buscarBuffer("BUF-ALPHA").getValorVacios() + sim.buscarBuffer("BUF-ALPHA").getValorLlenos()
+                == sim.buscarBuffer("BUF-ALPHA").getCapacidad(),
+                "Invariante de semáforos en BUF-ALPHA preservada tras ejecución de benchmark");
     }
 }

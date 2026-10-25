@@ -60,17 +60,29 @@ El sistema cumple de manera estricta con todas las especificaciones teóricas de
     `"[ciclo X] CREACION - Creado proceso [Nombre] (PID) en estado NUEVO (RAM requerida: Y KB)"`.
   - Se preservó íntegramente el evento posterior de `ADMISION` cuando el proceso transiciona de `NUEVO` a `LISTO` tras la asignación efectiva de memoria.
 
+### 2.6. Robustez Concurrente y Prevención de Despertares Perdidos (Lost Wakeup)
+- **Archivos:** `nucleo/Computador.java`, `sincronizacion/Buffer.java`, `sincronizacion/SemaforoBinario.java`
+- **Diagnóstico previo:** En condiciones de alta concurrencia inter-nodos, las llamadas concurrentes a `esperar()` y `bloquearEnSemaforo()` en `Computador.procesarSincronizacion()` podían intercalarse con señales `signal()` de otros nodos antes de que el proceso quedara registrado en `bloqueados`. Además, operaciones simultáneas en `Buffer.insertar()` y `extraer()` podían generar condiciones de carrera sobre la lista interna, y `SemaforoBinario.signal()` podía superar el límite de valor 1.
+- **Corrección aplicada:**
+  - En `Computador.procesarSincronizacion()`, se sincronizó la secuencia completa de espera y bloqueo bajo el monitor del semáforo (`synchronized(semVacios)`, `synchronized(semLlenos)`, `synchronized(semMutex)`).
+  - En `despertarProcesoCluster()` y `despertarProceso()`, la guardia ignora únicamente si `proceso == null || proceso.getEstado() == EstadoProceso.TERMINADO`, permitiendo transiciones atómicas seguras.
+  - En `Buffer.java`, `insertar()` y `extraer()` se definieron como `public synchronized`.
+  - En `SemaforoBinario.java`, se reforzó el invariante binario ($0 \le valor \le 1$) retornando `null` sin exceder 1 cuando `valor >= 1 && !hayEsperando()`.
+
 ---
 
 ## 3. Verificación Estática: Escaneo de Colecciones Prohibidas
 
-Se implementó el test estático automatizado:
+Se implementó y amplió el test estático automatizado:
 `src/test/java/estructuras/EscaneoColeccionesProhibidasPrueba.java`
 
 Resultados de la inspección estática:
 - **Total archivos escaneados:** 54 archivos `.java` (100% del proyecto)
-- **Total líneas analizadas:** 9,174 líneas de código
+- **Total líneas analizadas:** 9,415 líneas de código
 - **Violaciones detectadas:** **0 (Cero usos de colecciones de java.util)**
+- **Patrones Regex Automatizados:**
+  - `PATRON_IMPORT_PROHIBIDO`: Detección estricta de cualquier importación de colecciones de `java.util.*`.
+  - `PATRON_DECLARACION_INSTANCIACION`: Detección de tipos o instanciaciones de colecciones prohibidas.
 - **Colecciones auditadas:** `List`, `ArrayList`, `LinkedList`, `Map`, `HashMap`, `TreeMap`, `LinkedHashMap`, `Set`, `HashSet`, `TreeSet`, `Queue`, `Deque`, `ArrayDeque`, `PriorityQueue`, `Vector`, `Stack`, `Collection`, `Collections`, `Dictionary`, `Hashtable`.
 
 ---
@@ -87,6 +99,7 @@ Características técnicas del caso límite:
   - `PC-Gamma` (1000 MB RAM): Dos procesos remotos (495 MB + 495 MB) = 990 MB (99.0%).
 - **Latencia de Red Extrema:** 15 ciclos por acceso remoto entre nodos.
 - **Deadlines Críticos:** Plazos ajustados (30 a 50 ciclos) compitiendo contra la latencia de 15 ciclos de ida y vuelta para probar la resiliencia del planificador y los semáforos.
+- **Batería de Estrés de 60 Procesos Concurrentes:** `EscenariosSincronizacionPrueba` incluye el Escenario 6 con 60 procesos concurrentes compitiendo por 2 buffers saturados a través de la red, certificando 0 inanición y desasignación total de recursos.
 
 ---
 
@@ -94,15 +107,15 @@ Características técnicas del caso límite:
 
 | Suite de Pruebas | Clase de Prueba | Aserciones | Estado |
 | :--- | :--- | :---: | :---: |
-| **Static Scanner** | `estructuras.EscaneoColeccionesProhibidasPrueba` | 5 / 5 | **PASADO (100%)** |
-| **Concurrencia e IPC** | `simulacion.EscenariosSincronizacionPrueba` | 61 / 61 | **PASADO (100%)** |
-| **Persistencia y GUI** | `config.PersistenciaPrueba` | 68 / 68 | **PASADO (100%)** |
+| **Static Scanner** | `estructuras.EscaneoColeccionesProhibidasPrueba` | 7 / 7 | **PASADO (100%)** |
+| **Concurrencia e IPC** | `simulacion.EscenariosSincronizacionPrueba` | 81 / 81 | **PASADO (100%)** |
+| **Persistencia y GUI** | `config.PersistenciaPrueba` | 80 / 80 | **PASADO (100%)** |
 | **Control del Simulador** | `simulacion.SimuladorControlPrueba` | 8 / 8 | **PASADO (100%)** |
 | **Historial de Uso** | `simulacion.HistorialUtilizacionPrueba` | 5 / 5 | **PASADO (100%)** |
 | **Reloj y Lockstep** | `hardware.RelojPrueba` | 6 / 6 | **PASADO (100%)** |
 | **Validación de Formularios** | `gui.ValidadorProcesoPrueba` | 6 / 6 | **PASADO (100%)** |
 
-**Total de Pruebas Exitosas:** 159 / 159 (100% Aprobado sin fallos)
+**Total de Pruebas Exitosas:** 193 / 193 (100% Aprobado sin fallos)
 
 ---
 

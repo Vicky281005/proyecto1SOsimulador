@@ -198,16 +198,22 @@ public class Computador implements ComponenteReloj {
         switch (instr.getTipo()) {
             case PRODUCIR: {
                 // wait(vacios) -> wait(mutex) -> insertar -> signal(mutex) -> signal(llenos)
+                Semaforo semVacios = buffer.getVacios();
                 if (!proceso.isRecursoSemaforoAdquirido()) {
-                    if (!buffer.getVacios().esperar(proceso, MotivoBloqueo.SEMAFORO_VACIO)) {
-                        bloquearEnSemaforo(proceso, buffer.getVacios(), MotivoBloqueo.SEMAFORO_VACIO, buffer.getId());
-                        return true;
+                    synchronized (semVacios) {
+                        if (!semVacios.esperar(proceso, MotivoBloqueo.SEMAFORO_VACIO)) {
+                            bloquearEnSemaforo(proceso, semVacios, MotivoBloqueo.SEMAFORO_VACIO, buffer.getId());
+                            return true;
+                        }
                     }
                     proceso.setRecursoSemaforoAdquirido(true);
                 }
-                if (!buffer.getMutex().esperar(proceso)) {
-                    bloquearEnSemaforo(proceso, buffer.getMutex().getSemaforo(), MotivoBloqueo.MUTEX, buffer.getId());
-                    return true;
+                Semaforo semMutex = buffer.getMutex().getSemaforo();
+                synchronized (semMutex) {
+                    if (!buffer.getMutex().esperar(proceso)) {
+                        bloquearEnSemaforo(proceso, semMutex, MotivoBloqueo.MUTEX, buffer.getId());
+                        return true;
+                    }
                 }
                 if (accesoRemoto) {
                     // Bloquear por latencia de red antes de insertar
@@ -259,16 +265,22 @@ public class Computador implements ComponenteReloj {
                 return false;
             }
             case CONSUMIR: {
+                Semaforo semLlenos = buffer.getLlenos();
                 if (!proceso.isRecursoSemaforoAdquirido()) {
-                    if (!buffer.getLlenos().esperar(proceso, MotivoBloqueo.SEMAFORO_LLENO)) {
-                        bloquearEnSemaforo(proceso, buffer.getLlenos(), MotivoBloqueo.SEMAFORO_LLENO, buffer.getId());
-                        return true;
+                    synchronized (semLlenos) {
+                        if (!semLlenos.esperar(proceso, MotivoBloqueo.SEMAFORO_LLENO)) {
+                            bloquearEnSemaforo(proceso, semLlenos, MotivoBloqueo.SEMAFORO_LLENO, buffer.getId());
+                            return true;
+                        }
                     }
                     proceso.setRecursoSemaforoAdquirido(true);
                 }
-                if (!buffer.getMutex().esperar(proceso)) {
-                    bloquearEnSemaforo(proceso, buffer.getMutex().getSemaforo(), MotivoBloqueo.MUTEX, buffer.getId());
-                    return true;
+                Semaforo semMutex = buffer.getMutex().getSemaforo();
+                synchronized (semMutex) {
+                    if (!buffer.getMutex().esperar(proceso)) {
+                        bloquearEnSemaforo(proceso, semMutex, MotivoBloqueo.MUTEX, buffer.getId());
+                        return true;
+                    }
                 }
                 if (accesoRemoto) {
                     int latencia = 3;
@@ -316,9 +328,11 @@ public class Computador implements ComponenteReloj {
             }
             case SEM_WAIT: {
                 Semaforo s = buffer.getVacios();
-                if (!s.esperar(proceso, MotivoBloqueo.SEMAFORO_VACIO)) {
-                    bloquearEnSemaforo(proceso, s, MotivoBloqueo.SEMAFORO_VACIO, buffer.getId());
-                    return true;
+                synchronized (s) {
+                    if (!s.esperar(proceso, MotivoBloqueo.SEMAFORO_VACIO)) {
+                        bloquearEnSemaforo(proceso, s, MotivoBloqueo.SEMAFORO_VACIO, buffer.getId());
+                        return true;
+                    }
                 }
                 return false;
             }
@@ -585,7 +599,7 @@ public class Computador implements ComponenteReloj {
      * @param proceso proceso a despertar.
      */
     public void despertarProcesoCluster(PCB proceso) {
-        if (proceso == null || proceso.getEstado() != EstadoProceso.BLOQUEADO) {
+        if (proceso == null || proceso.getEstado() == EstadoProceso.TERMINADO) {
             return;
         }
         if (simulador != null) {
@@ -604,7 +618,7 @@ public class Computador implements ComponenteReloj {
      * @param proceso proceso a despertar.
      */
     public void despertarProceso(PCB proceso) {
-        if (proceso == null || proceso.getEstado() != EstadoProceso.BLOQUEADO) {
+        if (proceso == null || proceso.getEstado() == EstadoProceso.TERMINADO) {
             return;
         }
         bloqueados.eliminar(proceso);
