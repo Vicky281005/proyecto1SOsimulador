@@ -66,6 +66,10 @@ public class VentanaConfiguracion extends JFrame {
         this(null, null);
     }
 
+    public VentanaConfiguracion(JFrame ventanaPadre) {
+        this(ventanaPadre, null);
+    }
+
     public VentanaConfiguracion(JFrame ventanaPadre, Simulador simuladorExistente) {
         super("ÁvilaOS – Configuración de Simulación y Clúster");
         this.ventanaPadre = ventanaPadre;
