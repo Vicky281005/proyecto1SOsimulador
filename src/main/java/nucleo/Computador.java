@@ -83,6 +83,9 @@ public class Computador implements ComponenteReloj {
 
     @Override
     public void tick(long cicloActual) {
+        // Procesar bloqueos por latencia de red antes de admitir/despachar
+        procesarBloqueosPorLatencia(cicloActual);
+
         admitir();
 
         // Revisar deadlines y posibles desalos en todo el computador.
@@ -177,6 +180,10 @@ public class Computador implements ComponenteReloj {
             return false;
         }
 
+        int idCompProc = proceso.getComputadorAsignado();
+        int idCompBuf = buffer.getIdComputadorAnfitrion();
+        boolean accesoRemoto = (idCompProc != -1 && idCompProc != idCompBuf);
+
         switch (instr.getTipo()) {
             case PRODUCIR: {
                 // wait(vacios) -> wait(mutex) -> insertar -> signal(mutex) -> signal(llenos)
@@ -188,6 +195,24 @@ public class Computador implements ComponenteReloj {
                     // devolver vacios
                     buffer.getVacios().senalizar();
                     bloquearEnSemaforo(proceso, buffer.getMutex().getSemaforo(), MotivoBloqueo.MUTEX, buffer.getId());
+                    return true;
+                }
+                if (accesoRemoto) {
+                    // Bloquear por latencia de red antes de insertar
+                    int latencia = 3;
+                    if (simulador != null) {
+                        latencia = simulador.getLatenciaRedCiclos();
+                    }
+                    proceso.setOperacionRemotaPendiente(TipoInstruccion.PRODUCIR);
+                    proceso.setBufferRemotoPendienteId(buffer.getId());
+                    proceso.setMutexRemotoRetenido(true);
+                    proceso.setCiclosBloqueoRestantes(latencia);
+                    if (cpu.getProcesoActual() == proceso) {
+                        cpu.liberar();
+                    }
+                    proceso.bloquear(MotivoBloqueo.LATENCIA_RED, buffer.getId());
+                    planificador.eliminarListo(proceso);
+                    bloqueados.agregar(proceso);
                     return true;
                 }
                 buffer.insertar(new Object());
@@ -212,6 +237,23 @@ public class Computador implements ComponenteReloj {
                 if (!buffer.getMutex().esperar(proceso)) {
                     buffer.getLlenos().senalizar();
                     bloquearEnSemaforo(proceso, buffer.getMutex().getSemaforo(), MotivoBloqueo.MUTEX, buffer.getId());
+                    return true;
+                }
+                if (accesoRemoto) {
+                    int latencia = 3;
+                    if (simulador != null) {
+                        latencia = simulador.getLatenciaRedCiclos();
+                    }
+                    proceso.setOperacionRemotaPendiente(TipoInstruccion.CONSUMIR);
+                    proceso.setBufferRemotoPendienteId(buffer.getId());
+                    proceso.setMutexRemotoRetenido(true);
+                    proceso.setCiclosBloqueoRestantes(latencia);
+                    if (cpu.getProcesoActual() == proceso) {
+                        cpu.liberar();
+                    }
+                    proceso.bloquear(MotivoBloqueo.LATENCIA_RED, buffer.getId());
+                    planificador.eliminarListo(proceso);
+                    bloqueados.agregar(proceso);
                     return true;
                 }
                 buffer.extraer();
@@ -398,6 +440,96 @@ public class Computador implements ComponenteReloj {
                 break;
             }
         }
+    }
+
+    private void procesarBloqueosPorLatencia(long cicloActual) {
+        if (bloqueados.estaVacia()) {
+            return;
+        }
+        ListaEnlazada<PCB> paraDespertar = new ListaEnlazada<>();
+        Iterador<PCB> it = bloqueados.iterador();
+        while (it.haySiguiente()) {
+            PCB p = it.siguiente();
+            if (p == null) {
+                continue;
+            }
+            if (p.getMotivoBloqueo() == MotivoBloqueo.LATENCIA_RED && p.getOperacionRemotaPendiente() != null
+                    && p.isMutexRemotoRetenido()) {
+                long restantes = p.getCiclosBloqueoRestantes();
+                if (restantes > 0) {
+                    p.setCiclosBloqueoRestantes(restantes - 1);
+                    continue;
+                }
+                // Completar operación remota
+                Buffer buffer = null;
+                if (simulador != null) {
+                    String bid = p.getBufferRemotoPendienteId();
+                    if (bid == null || bid.isEmpty()) {
+                        bid = p.getBufferBloqueadoId();
+                    }
+                    buffer = simulador.buscarBuffer(bid);
+                }
+                if (buffer != null) {
+                    if (p.getOperacionRemotaPendiente() == TipoInstruccion.PRODUCIR) {
+                        buffer.insertar(new Object());
+                        p.incrementarElementosProducidos();
+                    } else if (p.getOperacionRemotaPendiente() == TipoInstruccion.CONSUMIR) {
+                        buffer.extraer();
+                        p.incrementarElementosConsumidos();
+                    }
+                    // Liberar mutex y despertar
+                    PCB despertadoMutex = buffer.getMutex().senalizar();
+                    if (despertadoMutex != null && despertadoMutex != p) {
+                        paraDespertar.agregar(despertadoMutex);
+                    }
+                    if (p.getOperacionRemotaPendiente() == TipoInstruccion.PRODUCIR) {
+                        PCB despertadoLlenos = buffer.getLlenos().senalizar();
+                        if (despertadoLlenos != null && despertadoLlenos != p) {
+                            paraDespertar.agregar(despertadoLlenos);
+                        }
+                    } else if (p.getOperacionRemotaPendiente() == TipoInstruccion.CONSUMIR) {
+                        PCB despertadoVacios = buffer.getVacios().senalizar();
+                        if (despertadoVacios != null && despertadoVacios != p) {
+                            paraDespertar.agregar(despertadoVacios);
+                        }
+                    }
+                }
+                p.limpiarOperacionRemotaPendiente();
+                paraDespertar.agregar(p);
+            }
+        }
+        // Desbloquear
+        Iterador<PCB> ides = paraDespertar.iterador();
+        while (ides.haySiguiente()) {
+            PCB dp = ides.siguiente();
+            if (dp == pActualMutex(bufferDp(dp))) {
+                // no duplicar
+            }
+            bloqueados.eliminar(dp);
+            if (dp.getMotivoBloqueo() == MotivoBloqueo.LATENCIA_RED) {
+                dp.setEstado(EstadoProceso.LISTO);
+                dp.setMotivoBloqueo(MotivoBloqueo.NINGUNO);
+                dp.setCiclosBloqueoRestantes(0);
+                planificador.encolarListo(dp);
+            } else {
+                despertarProceso(dp);
+            }
+        }
+    }
+
+    private PCB pActualMutex(Buffer b) {
+        return null;
+    }
+
+    private Buffer bufferDp(PCB p) {
+        if (p == null || simulador == null) {
+            return null;
+        }
+        String bid = p.getBufferRemotoPendienteId();
+        if (bid == null || bid.isEmpty()) {
+            bid = p.getBufferBloqueadoId();
+        }
+        return simulador.buscarBuffer(bid);
     }
 
     private void evaluarDesalojo(long cicloActual) {

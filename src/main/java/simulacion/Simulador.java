@@ -86,6 +86,20 @@ public class Simulador {
 
     private final ListaEnlazada<Buffer> buffers = new ListaEnlazada<>();
 
+    /** Latencia de red configurable para accesos remotos a buffers (ciclos). */
+    private int latenciaRedCiclos = 3;
+
+    public int getLatenciaRedCiclos() {
+        return latenciaRedCiclos;
+    }
+
+    public void setLatenciaRedCiclos(int latenciaRedCiclos) {
+        if (latenciaRedCiclos < 0) {
+            throw new IllegalArgumentException("La latencia de red no puede ser negativa.");
+        }
+        this.latenciaRedCiclos = latenciaRedCiclos;
+    }
+
     public void registrarBuffer(Buffer buffer) {
         if (buffer == null) {
             return;
