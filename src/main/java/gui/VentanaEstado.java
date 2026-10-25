@@ -156,14 +156,14 @@ public class VentanaEstado extends JFrame {
         while (it.haySiguiente()) {
             comboComp.addItem(it.siguiente());
         }
-        JTextField txtId = new JTextField("BUF-1");
+        JTextField txtId = new JTextField("BUF-" + System.currentTimeMillis());
         JTextField txtCap = new JTextField("5");
         JTextField txtTam = new JTextField("4");
         panel.add(new JLabel("ID del buffer:"));
         panel.add(txtId);
         panel.add(new JLabel("Capacidad:"));
         panel.add(txtCap);
-        panel.add(new JLabel("Tamaño elemento (bytes):"));
+        panel.add(new JLabel("Tamaño elemento (KB):"));
         panel.add(txtTam);
         panel.add(new JLabel("Computador anfitrión:"));
         panel.add(comboComp);
@@ -184,6 +184,9 @@ public class VentanaEstado extends JFrame {
             simulador.registrarBuffer(b);
             JOptionPane.showMessageDialog(this, "Buffer " + id + " creado correctamente en " + anfitrion.getNombre(), "OK", JOptionPane.INFORMATION_MESSAGE);
             refrescar();
+            for (PanelComputador p : paneles) {
+                p.actualizar();
+            }
         } catch (Exception ex) {
             JOptionPane.showMessageDialog(this, "Error al crear buffer: " + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
         }

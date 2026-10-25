@@ -2,14 +2,20 @@ package nucleo;
 
 import enums.EstadoProceso;
 import enums.MotivoBloqueo;
+import enums.TipoInstruccion;
+import enums.TipoProceso;
 import estructuras.Iterador;
 import estructuras.ListaEnlazada;
 import hardware.CPU;
 import hardware.ComponenteReloj;
+import modelo.Instruccion;
 import modelo.PCB;
 import planificacion.AlgoritmoPlanificacion;
 import planificacion.RoundRobin;
+import simulacion.Simulador;
+import sincronizacion.Buffer;
 import sincronizacion.Semaforo;
+import sincronizacion.SemaforoBinario;
 
 /**
  * Computador simulado de ÁvilaOS: el hardware (CPU) más su núcleo del sistema
@@ -96,7 +102,19 @@ public class Computador implements ComponenteReloj {
         }
 
         if (enEjecucion != null) {
-            cpu.tick(cicloActual);
+            Instruccion instr = enEjecucion.getInstruccionActual();
+            if (instr != null && esInstruccionKernel(instr.getTipo())) {
+                boolean bloqueado = procesarInstruccionKernel(enEjecucion, instr, cicloActual);
+                if (bloqueado) {
+                    enEjecucion = cpu.getProcesoActual();
+                } else {
+                    // La instrucción se procesó, avanzar PC
+                    enEjecucion.avanzarPasoCpu(cicloActual);
+                    enEjecucion = cpu.getProcesoActual();
+                }
+            } else {
+                cpu.tick(cicloActual);
+            }
             // Tras ejecutar, volver a evaluar por si venció el deadline o agotó quantum.
             enEjecucion = cpu.getProcesoActual();
             if (enEjecucion != null) {
@@ -113,6 +131,119 @@ public class Computador implements ComponenteReloj {
         evaluarDesalojo(cicloActual);
         if (cpu.estaOciosa()) {
             despachar(cicloActual);
+        }
+    }
+
+    private boolean esInstruccionKernel(TipoInstruccion tipo) {
+        return tipo == TipoInstruccion.SEM_WAIT
+                || tipo == TipoInstruccion.SEM_SIGNAL
+                || tipo == TipoInstruccion.PRODUCIR
+                || tipo == TipoInstruccion.CONSUMIR
+                || tipo == TipoInstruccion.READ_IO
+                || tipo == TipoInstruccion.WRITE_IO;
+    }
+
+    private boolean procesarInstruccionKernel(PCB proceso, Instruccion instr, long cicloActual) {
+        try {
+            switch (instr.getTipo()) {
+                case SEM_WAIT:
+                case SEM_SIGNAL:
+                case PRODUCIR:
+                case CONSUMIR: {
+                    return procesarSincronizacion(proceso, instr, cicloActual);
+                }
+                case READ_IO:
+                case WRITE_IO: {
+                    // Por ahora se trata como instrucción de 1 ciclo (modo SO). 
+                    // Se puede bloquear si se requiere.
+                    return false;
+                }
+                default:
+                    return false;
+            }
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private boolean procesarSincronizacion(PCB proceso, Instruccion instr, long cicloActual) {
+        String bufferId = proceso.getIdBufferTarget();
+        Buffer buffer = null;
+        if (simulador != null && bufferId != null && !bufferId.isEmpty()) {
+            buffer = simulador.buscarBuffer(bufferId);
+        }
+        if (buffer == null) {
+            // Sin buffer, ejecutar como instrucción normal
+            return false;
+        }
+
+        switch (instr.getTipo()) {
+            case PRODUCIR: {
+                // wait(vacios) -> wait(mutex) -> insertar -> signal(mutex) -> signal(llenos)
+                if (!buffer.getVacios().esperar(proceso, MotivoBloqueo.SEMAFORO_VACIO)) {
+                    bloquearEnSemaforo(proceso, buffer.getVacios(), MotivoBloqueo.SEMAFORO_VACIO, buffer.getId());
+                    return true;
+                }
+                if (!buffer.getMutex().esperar(proceso)) {
+                    // devolver vacios
+                    buffer.getVacios().senalizar();
+                    bloquearEnSemaforo(proceso, buffer.getMutex().getSemaforo(), MotivoBloqueo.MUTEX, buffer.getId());
+                    return true;
+                }
+                buffer.insertar(new Object());
+                proceso.incrementarElementosProducidos();
+                // signal(mutex)
+                PCB despertadoMutex = buffer.getMutex().senalizar();
+                if (despertadoMutex != null) {
+                    despertarProceso(despertadoMutex);
+                }
+                // signal(llenos)
+                PCB despertadoLlenos = buffer.getLlenos().senalizar();
+                if (despertadoLlenos != null) {
+                    despertarProceso(despertadoLlenos);
+                }
+                return false;
+            }
+            case CONSUMIR: {
+                if (!buffer.getLlenos().esperar(proceso, MotivoBloqueo.SEMAFORO_LLENO)) {
+                    bloquearEnSemaforo(proceso, buffer.getLlenos(), MotivoBloqueo.SEMAFORO_LLENO, buffer.getId());
+                    return true;
+                }
+                if (!buffer.getMutex().esperar(proceso)) {
+                    buffer.getLlenos().senalizar();
+                    bloquearEnSemaforo(proceso, buffer.getMutex().getSemaforo(), MotivoBloqueo.MUTEX, buffer.getId());
+                    return true;
+                }
+                buffer.extraer();
+                proceso.incrementarElementosConsumidos();
+                PCB despertadoMutex2 = buffer.getMutex().senalizar();
+                if (despertadoMutex2 != null) {
+                    despertarProceso(despertadoMutex2);
+                }
+                PCB despertadoVacios = buffer.getVacios().senalizar();
+                if (despertadoVacios != null) {
+                    despertarProceso(despertadoVacios);
+                }
+                return false;
+            }
+            case SEM_WAIT: {
+                Semaforo s = buffer.getVacios();
+                if (!s.esperar(proceso, MotivoBloqueo.SEMAFORO_VACIO)) {
+                    bloquearEnSemaforo(proceso, s, MotivoBloqueo.SEMAFORO_VACIO, buffer.getId());
+                    return true;
+                }
+                return false;
+            }
+            case SEM_SIGNAL: {
+                Semaforo s2 = buffer.getVacios();
+                PCB despertado = s2.senalizar();
+                if (despertado != null) {
+                    despertarProceso(despertado);
+                }
+                return false;
+            }
+            default:
+                return false;
         }
     }
 
@@ -398,16 +529,32 @@ public class Computador implements ComponenteReloj {
         return terminados.getTamano();
     }
 
-    private final ListaEnlazada<sincronizacion.Buffer> buffers = new ListaEnlazada<>();
+    private final ListaEnlazada<Buffer> buffers = new ListaEnlazada<>();
+    private Simulador simulador;
 
-    public void registrarBuffer(sincronizacion.Buffer buffer) {
+    public void setSimulador(Simulador simulador) {
+        this.simulador = simulador;
+    }
+
+    public Simulador getSimulador() {
+        return simulador;
+    }
+
+    public void registrarBuffer(Buffer buffer) {
         if (buffer == null) {
             return;
+        }
+        Iterador<Buffer> it = buffers.iterador();
+        while (it.haySiguiente()) {
+            Buffer b = it.siguiente();
+            if (b != null && buffer.getId() != null && buffer.getId().equals(b.getId())) {
+                return;
+            }
         }
         buffers.agregar(buffer);
     }
 
-    public ListaEnlazada<sincronizacion.Buffer> getBuffers() {
+    public ListaEnlazada<Buffer> getBuffers() {
         return buffers;
     }
 

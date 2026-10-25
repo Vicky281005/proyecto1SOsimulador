@@ -99,7 +99,6 @@ public class Simulador {
             Computador c = it.siguiente();
             if (c.getId() == buffer.getIdComputadorAnfitrion()) {
                 c.registrarBuffer(buffer);
-                break;
             }
         }
     }
@@ -164,6 +163,7 @@ public class Simulador {
             if (computadores.contiene(computador)) {
                 return; // ya estaba registrado, no se duplica
             }
+            computador.setSimulador(this);
             computadores.agregar(computador);
             reloj.registrar(computador);
         } finally {

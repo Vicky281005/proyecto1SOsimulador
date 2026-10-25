@@ -146,7 +146,7 @@ public class PanelComputador extends JPanel {
     private void actualizarBuffers() {
         estructuras.ListaEnlazada<Buffer> listaBuffers = computador.getBuffers();
         if (listaBuffers == null || listaBuffers.estaVacia()) {
-            buffers.mostrar(new String[0]);
+            buffers.forzar(new String[0]);
             return;
         }
         String[] arr = new String[listaBuffers.getTamano()];
@@ -160,7 +160,7 @@ public class PanelComputador extends JPanel {
                         + " (esp vacios:" + b.getCantidadEsperandoVacios() + ")";
             }
         }
-        buffers.mostrar(arr);
+        buffers.forzar(arr);
     }
 
     /** Convierte una cola de procesos en líneas de texto, una por proceso. */
@@ -226,6 +226,12 @@ public class PanelComputador extends JPanel {
                 return false;
             }
             for (int i = 0; i < a.length; i++) {
+                if (a[i] == null && b[i] == null) {
+                    continue;
+                }
+                if (a[i] == null || b[i] == null) {
+                    return false;
+                }
                 if (!a[i].equals(b[i])) {
                     return false;
                 }
@@ -234,13 +240,31 @@ public class PanelComputador extends JPanel {
         }
 
         void mostrar(String[] nuevas) {
+            if (nuevas == null) {
+                nuevas = new String[0];
+            }
             if (iguales(ultimo, nuevas)) {
                 return;
             }
             ultimo = nuevas;
             modelo.clear();
             for (String s : nuevas) {
-                modelo.addElement(s);
+                if (s != null) {
+                    modelo.addElement(s);
+                }
+            }
+        }
+
+        void forzar(String[] nuevas) {
+            if (nuevas == null) {
+                nuevas = new String[0];
+            }
+            ultimo = nuevas;
+            modelo.clear();
+            for (String s : nuevas) {
+                if (s != null) {
+                    modelo.addElement(s);
+                }
             }
         }
     }
