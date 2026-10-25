@@ -38,6 +38,11 @@ public class PCB {
     private String bufferBloqueadoId;
     private long ciclosBloqueoRestantes;
 
+    // Acceso remoto pendiente (latencia de red)
+    private enums.TipoInstruccion operacionRemotaPendiente;
+    private String bufferRemotoPendienteId;
+    private boolean mutexRemotoRetenido;
+
     // Configuración Inicial Productor / Consumidor (Metadatos)
     private String idBufferTarget;
     private int elementosRequeridos;
@@ -50,6 +55,10 @@ public class PCB {
     private long tiempoBloqueadoAcumulado;
     private long ciclosCpuConsumidos;
     private boolean deadlineCumplido;
+
+    // Productor/Consumidor
+    private int elementosProducidos;
+    private int elementosConsumidos;
 
     public PCB(String nombre, int computadorAsignado, TipoProceso tipo, int prioridad, 
                long memoriaAsignada, long deadlineRelativo, 
@@ -165,6 +174,36 @@ public class PCB {
         this.bufferBloqueadoId = (bufferId != null) ? bufferId : "";
     }
 
+    public enums.TipoInstruccion getOperacionRemotaPendiente() {
+        return operacionRemotaPendiente;
+    }
+
+    public void setOperacionRemotaPendiente(enums.TipoInstruccion operacionRemotaPendiente) {
+        this.operacionRemotaPendiente = operacionRemotaPendiente;
+    }
+
+    public String getBufferRemotoPendienteId() {
+        return bufferRemotoPendienteId;
+    }
+
+    public void setBufferRemotoPendienteId(String bufferRemotoPendienteId) {
+        this.bufferRemotoPendienteId = bufferRemotoPendienteId;
+    }
+
+    public boolean isMutexRemotoRetenido() {
+        return mutexRemotoRetenido;
+    }
+
+    public void setMutexRemotoRetenido(boolean mutexRemotoRetenido) {
+        this.mutexRemotoRetenido = mutexRemotoRetenido;
+    }
+
+    public void limpiarOperacionRemotaPendiente() {
+        this.operacionRemotaPendiente = null;
+        this.bufferRemotoPendienteId = null;
+        this.mutexRemotoRetenido = false;
+    }
+
     /**
      * Asigna el proceso a un computador. Solo se permite mientras el proceso
      * no haya sido admitido (estado NUEVO), de modo que un proceso ya aceptado
@@ -212,6 +251,7 @@ public class PCB {
             this.motivoBloqueo = MotivoBloqueo.NINGUNO;
             this.bufferBloqueadoId = "";
             this.ciclosBloqueoRestantes = 0;
+            limpiarOperacionRemotaPendiente();
         }
     }
     
@@ -266,4 +306,10 @@ public class PCB {
     public long getCiclosCpuConsumidos() { return ciclosCpuConsumidos; }
     public boolean isDeadlineCumplido() { return deadlineCumplido; }
     public void setDeadlineCumplido(boolean deadlineCumplido) { this.deadlineCumplido = deadlineCumplido; }
+
+    public int getElementosProducidos() { return elementosProducidos; }
+    public void incrementarElementosProducidos() { this.elementosProducidos++; }
+
+    public int getElementosConsumidos() { return elementosConsumidos; }
+    public void incrementarElementosConsumidos() { this.elementosConsumidos++; }
 }

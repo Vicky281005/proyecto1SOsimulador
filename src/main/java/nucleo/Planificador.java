@@ -17,6 +17,7 @@ public class Planificador {
 
     private final ListaEnlazada<PCB> listos;
     private AlgoritmoPlanificacion politica;
+    private Computador computador;
 
     public Planificador(AlgoritmoPlanificacion politica) {
         if (politica == null) {
@@ -106,6 +107,10 @@ public class Planificador {
         return listos.eliminar(proceso);
     }
 
+    public void setComputador(Computador computador) {
+        this.computador = computador;
+    }
+
     /**
      * Cambia la política de planificación en tiempo de ejecución.
      *
@@ -115,7 +120,38 @@ public class Planificador {
         if (politica == null) {
             throw new IllegalArgumentException("La política de planificación no puede ser nula.");
         }
+        simulacion.LogEventos log = null;
+        if (computador != null && computador.getSimulador() != null) {
+            log = computador.getSimulador().getLogEventos();
+        }
+        if (log != null) {
+            String ant = this.politica != null ? this.politica.getNombre() : "?";
+            String nue = politica.getNombre();
+            log.registrar(simulacion.LogEventos.TipoEvento.CAMBIO_POLITICA, "Cambio de política " + ant + " -> " + nue + " en " + (computador != null ? computador.getNombre() : ""));
+        }
         this.politica = politica;
+    }
+
+    /**
+     * Cambia el quantum de Round Robin en tiempo de ejecución.
+     *
+     * @param nuevoQuantum nuevo valor de quantum (> 0).
+     */
+    public void setQuantum(int nuevoQuantum) {
+        if (nuevoQuantum <= 0) {
+            throw new IllegalArgumentException("El quantum debe ser mayor que cero.");
+        }
+        if (politica instanceof planificacion.RoundRobin rr) {
+            int anterior = rr.getQuantum();
+            rr.setQuantum(nuevoQuantum);
+            simulacion.LogEventos log = (computador != null && computador.getSimulador() != null)
+                    ? computador.getSimulador().getLogEventos() : null;
+            if (log != null) {
+                log.registrar(simulacion.LogEventos.TipoEvento.CAMBIO_POLITICA,
+                        "Cambio de quantum Round Robin: " + anterior + " -> " + nuevoQuantum
+                                + " en " + (computador != null ? computador.getNombre() : ""));
+            }
+        }
     }
 
     /** Iterador sobre la cola de listos, para observarla sin exponer la lista interna. */
