@@ -19,6 +19,7 @@ public class LogEventos {
         TERMINADO,
         DESALOJO,
         BUFFER,
+        CREACION,
         OTRO
     }
 

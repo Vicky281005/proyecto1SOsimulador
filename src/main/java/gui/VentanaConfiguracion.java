@@ -586,11 +586,20 @@ public class VentanaConfiguracion extends JFrame {
 
     private void sincronizarCamposGlobales() {
         try {
-            long dur = Long.parseLong(txtDuracionCiclo.getText().trim());
-            int lat = Integer.parseInt(txtLatenciaRed.getText().trim());
+            String txtDur = txtDuracionCiclo.getText();
+            long dur = (txtDur != null && !txtDur.trim().isEmpty())
+                    ? Long.parseLong(txtDur.trim()) : -1;
             config.setDuracionCicloMs(dur);
+        } catch (NumberFormatException e) {
+            config.setDuracionCicloMs(-1);
+        }
+        try {
+            String txtLat = txtLatenciaRed.getText();
+            int lat = (txtLat != null && !txtLat.trim().isEmpty())
+                    ? Integer.parseInt(txtLat.trim()) : -1;
             config.setLatenciaRedCiclos(lat);
-        } catch (NumberFormatException ignored) {
+        } catch (NumberFormatException e) {
+            config.setLatenciaRedCiclos(-1);
         }
     }
 

@@ -103,16 +103,27 @@ public class Semaforo {
      * Usado cuando un proceso es terminado antes de que se despierte o ejecute
      * (por ejemplo por vencimiento de deadline).
      *
+     * <p>Si el proceso que muere tenía un permiso reservado, transfiere dicho permiso
+     * de inmediato al siguiente proceso en la cola de espera para eliminar cualquier
+     * riesgo de inanición o bloqueo residual, retornando el proceso beneficiado para
+     * que el kernel lo despierte.</p>
+     *
      * @param proceso proceso a remover.
-     * @return true si el proceso estaba presente y fue removido.
+     * @return el proceso que recibió el permiso transferido (para despertar en el cluster),
+     *         o {@code null} si nadie esperaba o el proceso no tenía permiso reservado.
      */
-    public synchronized boolean remover(PCB proceso) {
+    public synchronized PCB remover(PCB proceso) {
         if (proceso == null) {
-            return false;
+            return null;
         }
-        boolean removidoCola = colaEspera.eliminar(proceso);
-        boolean removidoReservados = permisosReservados.eliminar(proceso);
-        return removidoCola || removidoReservados;
+        colaEspera.eliminar(proceso);
+        boolean teniaReservado = permisosReservados.eliminar(proceso);
+        if (teniaReservado && !colaEspera.estaVacia()) {
+            PCB siguiente = colaEspera.eliminarPrimero();
+            permisosReservados.agregar(siguiente);
+            return siguiente;
+        }
+        return null;
     }
 
     public synchronized int getCantidadEsperando() {

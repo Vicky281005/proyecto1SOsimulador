@@ -1,6 +1,7 @@
 package nucleo;
 
 import enums.EstadoProceso;
+import enums.ModoCPU;
 import enums.MotivoBloqueo;
 import enums.TipoInstruccion;
 import enums.TipoProceso;
@@ -80,6 +81,13 @@ public class Computador implements ComponenteReloj {
             proceso.asignarComputador(id);
         }
         nuevos.agregar(proceso);
+
+        simulacion.LogEventos log = (simulador != null) ? simulador.getLogEventos() : null;
+        if (log != null && !proceso.isCreacionRegistradaEnLog()) {
+            proceso.setCreacionRegistradaEnLog(true);
+            log.registrar(simulacion.LogEventos.TipoEvento.CREACION,
+                    "Creado proceso " + proceso.getNombre() + " (" + proceso.getId() + ") en estado NUEVO (RAM requerida: " + proceso.getMemoriaAsignada() + " KB)");
+        }
     }
 
     @Override
@@ -108,12 +116,14 @@ public class Computador implements ComponenteReloj {
         if (enEjecucion != null) {
             Instruccion instr = enEjecucion.getInstruccionActual();
             if (instr != null && esInstruccionKernel(instr.getTipo())) {
+                cpu.setModo(ModoCPU.KERNEL);
                 boolean bloqueado = procesarInstruccionKernel(enEjecucion, instr, cicloActual);
                 if (bloqueado) {
                     enEjecucion = cpu.getProcesoActual();
                 } else {
-                    // La instrucción se procesó, avanzar PC
+                    // La instrucción se procesó, avanzar PC y registrar paso en la CPU
                     enEjecucion.avanzarPasoCpu(cicloActual);
+                    cpu.registrarPasoEjecutado();
                     enEjecucion = cpu.getProcesoActual();
                 }
             } else {
@@ -388,13 +398,23 @@ public class Computador implements ComponenteReloj {
         if (proceso == null) {
             return;
         }
-        // Si estaba en la cola de algún semáforo de buffer, desvincularlo para no dejarlo como proceso fantasma
+        // Si estaba en la cola de algún semáforo de buffer, desvincularlo para no dejarlo como proceso fantasma.
+        // Si tenía un permiso reservado, transferir dicho permiso y despertar al siguiente proceso en espera.
         if (proceso.getBufferBloqueadoId() != null && !proceso.getBufferBloqueadoId().isEmpty()) {
             Buffer buffer = (simulador != null) ? simulador.buscarBuffer(proceso.getBufferBloqueadoId()) : null;
             if (buffer != null) {
-                buffer.getVacios().remover(proceso);
-                buffer.getLlenos().remover(proceso);
-                buffer.getMutex().remover(proceso);
+                PCB despV = buffer.getVacios().remover(proceso);
+                if (despV != null) {
+                    despertarProcesoCluster(despV);
+                }
+                PCB despL = buffer.getLlenos().remover(proceso);
+                if (despL != null) {
+                    despertarProcesoCluster(despL);
+                }
+                PCB despM = buffer.getMutex().remover(proceso);
+                if (despM != null) {
+                    despertarProcesoCluster(despM);
+                }
             }
         }
 
@@ -871,6 +891,17 @@ public class Computador implements ComponenteReloj {
 
     public void setSimulador(Simulador simulador) {
         this.simulador = simulador;
+        if (simulador != null && simulador.getLogEventos() != null) {
+            Iterador<PCB> it = nuevos.iterador();
+            while (it.haySiguiente()) {
+                PCB p = it.siguiente();
+                if (!p.isCreacionRegistradaEnLog()) {
+                    p.setCreacionRegistradaEnLog(true);
+                    simulador.getLogEventos().registrar(simulacion.LogEventos.TipoEvento.CREACION,
+                            "Creado proceso " + p.getNombre() + " (" + p.getId() + ") en estado NUEVO (RAM requerida: " + p.getMemoriaAsignada() + " KB)");
+                }
+            }
+        }
     }
 
     public Simulador getSimulador() {

@@ -318,4 +318,18 @@ public class PCB {
 
     public boolean isRecursoSemaforoAdquirido() { return recursoSemaforoAdquirido; }
     public void setRecursoSemaforoAdquirido(boolean recursoSemaforoAdquirido) { this.recursoSemaforoAdquirido = recursoSemaforoAdquirido; }
+
+    private boolean creacionRegistradaEnLog;
+
+    public boolean isCreacionRegistradaEnLog() {
+        return creacionRegistradaEnLog;
+    }
+
+    public void setCreacionRegistradaEnLog(boolean creacionRegistradaEnLog) {
+        this.creacionRegistradaEnLog = creacionRegistradaEnLog;
+    }
+
+    public long getMemoriaRequerida() {
+        return memoriaAsignada;
+    }
 }
