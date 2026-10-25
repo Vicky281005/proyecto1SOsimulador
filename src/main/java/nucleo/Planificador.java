@@ -132,6 +132,28 @@ public class Planificador {
         this.politica = politica;
     }
 
+    /**
+     * Cambia el quantum de Round Robin en tiempo de ejecución.
+     *
+     * @param nuevoQuantum nuevo valor de quantum (> 0).
+     */
+    public void setQuantum(int nuevoQuantum) {
+        if (nuevoQuantum <= 0) {
+            throw new IllegalArgumentException("El quantum debe ser mayor que cero.");
+        }
+        if (politica instanceof planificacion.RoundRobin rr) {
+            int anterior = rr.getQuantum();
+            rr.setQuantum(nuevoQuantum);
+            simulacion.LogEventos log = (computador != null && computador.getSimulador() != null)
+                    ? computador.getSimulador().getLogEventos() : null;
+            if (log != null) {
+                log.registrar(simulacion.LogEventos.TipoEvento.CAMBIO_POLITICA,
+                        "Cambio de quantum Round Robin: " + anterior + " -> " + nuevoQuantum
+                                + " en " + (computador != null ? computador.getNombre() : ""));
+            }
+        }
+    }
+
     /** Iterador sobre la cola de listos, para observarla sin exponer la lista interna. */
     public Iterador<PCB> iteradorListos() {
         return listos.iterador();

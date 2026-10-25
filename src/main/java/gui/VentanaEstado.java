@@ -55,6 +55,7 @@ public class VentanaEstado extends JFrame {
     private final JButton btnCrearBuffer = new JButton("Crear buffer");
     private final JButton btnGrafica = new JButton("Gráfica CPU");
     private VentanaGrafica ventanaGrafica;
+    private final JButton btnConfiguracion = new JButton("Configuración…");
     private final JSlider deslizador;
     private final javax.swing.JTextArea areaLog = new javax.swing.JTextArea(6, 80);
     private final javax.swing.JScrollPane scrollLog = new javax.swing.JScrollPane(areaLog);
@@ -95,6 +96,7 @@ public class VentanaEstado extends JFrame {
         barra.add(btnCrear);
         barra.add(btnCrearBuffer);
         barra.add(btnGrafica);
+        barra.add(btnConfiguracion);
         barra.add(new JLabel("Duración del ciclo:"));
         barra.add(deslizador);
         barra.add(lblDuracion);
@@ -106,6 +108,7 @@ public class VentanaEstado extends JFrame {
         btnCrear.addActionListener(e -> abrirCrearProceso());
         btnCrearBuffer.addActionListener(e -> crearBuffer());
         btnGrafica.addActionListener(e -> abrirGrafica());
+        btnConfiguracion.addActionListener(e -> abrirConfiguracion());
 
         areaLog.setEditable(false);
         areaLog.setLineWrap(true);
@@ -160,6 +163,12 @@ public class VentanaEstado extends JFrame {
         }
         ventanaGrafica.setVisible(true);
         ventanaGrafica.toFront();
+    }
+
+    /** Abre la ventana de configuración y persistencia. */
+    private void abrirConfiguracion() {
+        VentanaConfiguracion vc = new VentanaConfiguracion(this, simulador);
+        vc.setVisible(true);
     }
 
     private void crearBuffer() {
