@@ -38,6 +38,11 @@ public class PCB {
     private String bufferBloqueadoId;
     private long ciclosBloqueoRestantes;
 
+    // Acceso remoto pendiente (latencia de red)
+    private enums.TipoInstruccion operacionRemotaPendiente;
+    private String bufferRemotoPendienteId;
+    private boolean mutexRemotoRetenido;
+
     // Configuración Inicial Productor / Consumidor (Metadatos)
     private String idBufferTarget;
     private int elementosRequeridos;
@@ -169,6 +174,36 @@ public class PCB {
         this.bufferBloqueadoId = (bufferId != null) ? bufferId : "";
     }
 
+    public enums.TipoInstruccion getOperacionRemotaPendiente() {
+        return operacionRemotaPendiente;
+    }
+
+    public void setOperacionRemotaPendiente(enums.TipoInstruccion operacionRemotaPendiente) {
+        this.operacionRemotaPendiente = operacionRemotaPendiente;
+    }
+
+    public String getBufferRemotoPendienteId() {
+        return bufferRemotoPendienteId;
+    }
+
+    public void setBufferRemotoPendienteId(String bufferRemotoPendienteId) {
+        this.bufferRemotoPendienteId = bufferRemotoPendienteId;
+    }
+
+    public boolean isMutexRemotoRetenido() {
+        return mutexRemotoRetenido;
+    }
+
+    public void setMutexRemotoRetenido(boolean mutexRemotoRetenido) {
+        this.mutexRemotoRetenido = mutexRemotoRetenido;
+    }
+
+    public void limpiarOperacionRemotaPendiente() {
+        this.operacionRemotaPendiente = null;
+        this.bufferRemotoPendienteId = null;
+        this.mutexRemotoRetenido = false;
+    }
+
     /**
      * Asigna el proceso a un computador. Solo se permite mientras el proceso
      * no haya sido admitido (estado NUEVO), de modo que un proceso ya aceptado
@@ -216,6 +251,7 @@ public class PCB {
             this.motivoBloqueo = MotivoBloqueo.NINGUNO;
             this.bufferBloqueadoId = "";
             this.ciclosBloqueoRestantes = 0;
+            limpiarOperacionRemotaPendiente();
         }
     }
     
