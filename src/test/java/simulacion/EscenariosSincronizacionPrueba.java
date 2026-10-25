@@ -91,13 +91,8 @@ public class EscenariosSincronizacionPrueba {
         sim.cargarProceso(p3);
         sim.cargarProceso(p4);
 
-        sim.ejecutar();
-
-        System.out.println("DEBUG P1: " + p1.getEstado() + ", P2: " + p2.getEstado() + ", P3: " + p3.getEstado() + ", P4: " + p4.getEstado());
-        System.out.println("DEBUG PC1 Bloqueados: " + pc1.getCantidadBloqueados() + ", Listos: " + pc1.getPlanificador().getCantidadListos() + ", Terminados: " + pc1.getCantidadTerminados());
-        Iterador<LogEventos.Evento> itEv = sim.getLogEventos().iterador();
-        while (itEv.haySiguiente()) {
-            System.out.println("  LOG: " + itEv.siguiente());
+        for (int i = 0; i < 5; i++) {
+            sim.getReloj().avanzarCiclo();
         }
 
         asegurar(p1.getEstado() == EstadoProceso.TERMINADO, "Prod-1 produjo y terminó exitosamente");
@@ -126,6 +121,7 @@ public class EscenariosSincronizacionPrueba {
      */
     public static void probarEscenario2_DesbloqueoEnCascada() {
         System.out.println("\n>>> ESCENARIO 2: Desbloqueo en cascada añadiendo 1 consumidor");
+        // Fase 1: saturar buffer N=1 con 3 productores (Prod-1 llena, Prod-2 y Prod-3 se bloquean)
         Simulador sim = new Simulador();
         Computador pc1 = new Computador(1, "PC-1", 4096, FabricaPoliticas.crear(PoliticaPlanificacion.FCFS));
         sim.registrarComputador(pc1);
@@ -140,32 +136,45 @@ public class EscenariosSincronizacionPrueba {
         sim.cargarProceso(p1);
         sim.cargarProceso(p2);
         sim.cargarProceso(p3);
-        sim.ejecutar();
 
+        for (int i = 0; i < 4; i++) {
+            sim.getReloj().avanzarCiclo();
+        }
+
+        asegurar(p1.getEstado() == EstadoProceso.TERMINADO, "Estado previo: Prod-1 terminó");
         asegurar(pc1.getCantidadBloqueados() == 2, "Estado previo: 2 productores (Prod-2 y Prod-3) bloqueados");
+        asegurar(buf.getCantidadEsperandoVacios() == 2, "2 productores esperando en semáforo vacíos");
 
-        // Añadimos 1 consumidor
+        // Fase 2: Añadimos 1 consumidor (Cons-1) a la cola de productores bloqueados
         PCB c1 = new PCB("Cons-1", pc1.getId(), TipoProceso.CONSUMIDOR, 1, 100, 1000, buf.getId(), 1, 1, crearPrograma(TipoInstruccion.CONSUMIR, 1), sim.getCicloActual());
         sim.cargarProceso(c1);
-        sim.ejecutar();
 
-        asegurar(c1.getEstado() == EstadoProceso.TERMINADO, "Cons-1 consumió y terminó");
-        asegurar(p2.getEstado() == EstadoProceso.TERMINADO, "Prod-2 fue desbloqueado en cascada, produjo y terminó");
-        asegurar(p3.getEstado() == EstadoProceso.BLOQUEADO, "Prod-3 sigue en espera en la cola de vacíos");
-        asegurar(pc1.getCantidadBloqueados() == 1, "Ahora queda exactamente 1 productor bloqueado");
-        asegurar(buf.getCantidadElementos() == 1, "Buffer vuelve a tener 1 elemento (producido por Prod-2)");
+        // Avanzar ciclos para que Cons-1 consuma y Prod-2 se desbloquee en cascada y produzca
+        for (int i = 0; i < 4; i++) {
+            sim.getReloj().avanzarCiclo();
+        }
+
+        asegurar(c1.getEstado() == EstadoProceso.TERMINADO, "Cons-1 consumió el elemento de Prod-1 y terminó");
+        asegurar(p2.getEstado() == EstadoProceso.TERMINADO, "Prod-2 fue desbloqueado en cascada por Cons-1, produjo y terminó");
+        asegurar(p3.getEstado() == EstadoProceso.BLOQUEADO, "Prod-3 sigue esperando en vacíos porque el buffer volvió a llenarse");
+        asegurar(pc1.getCantidadBloqueados() == 1, "Queda exactamente 1 productor (Prod-3) bloqueado");
+        asegurar(buf.getCantidadElementos() == 1, "Buffer tiene 1 elemento guardado por Prod-2");
         asegurar(buf.getCantidadEsperandoVacios() == 1, "1 proceso esperando en semáforo vacíos");
-        asegurar(buf.getValorVacios() + buf.getValorLlenos() == buf.getCapacidad(), "Invariante preservada tras cascada (0 + 1 == 1)");
+        asegurar(buf.getValorVacios() + buf.getValorLlenos() == buf.getCapacidad(),
+                "Invariante respetada tras desbloqueo en cascada: vacios(0) + llenos(1) == capacidad(1)");
 
-        // Segundo consumidor para completar la cascada
+        // Fase 3: Segundo consumidor desbloquea al último productor restante
         PCB c2 = new PCB("Cons-2", pc1.getId(), TipoProceso.CONSUMIDOR, 1, 100, 1000, buf.getId(), 1, 1, crearPrograma(TipoInstruccion.CONSUMIR, 1), sim.getCicloActual());
         sim.cargarProceso(c2);
-        sim.ejecutar();
+
+        for (int i = 0; i < 4; i++) {
+            sim.getReloj().avanzarCiclo();
+        }
 
         asegurar(c2.getEstado() == EstadoProceso.TERMINADO, "Cons-2 consumió y terminó");
-        asegurar(p3.getEstado() == EstadoProceso.TERMINADO, "Prod-3 fue desbloqueado en cascada y terminó");
-        asegurar(pc1.getCantidadBloqueados() == 0, "No quedan procesos bloqueados en el sistema");
-        asegurar(buf.getCantidadEsperandoVacios() == 0, "Semáforo vacíos sin procesos en espera");
+        asegurar(p3.getEstado() == EstadoProceso.TERMINADO, "Prod-3 fue desbloqueado en cascada por Cons-2 y terminó");
+        asegurar(pc1.getCantidadBloqueados() == 0, "No quedan procesos bloqueados en el clúster");
+        asegurar(buf.getCantidadEsperandoVacios() == 0, "Semáforo vacíos vacío sin procesos en espera");
     }
 
     /**
@@ -270,7 +279,7 @@ public class EscenariosSincronizacionPrueba {
         Computador pc1 = new Computador(1, "PC-1", 4096, FabricaPoliticas.crear(PoliticaPlanificacion.FCFS));
         sim.registrarComputador(pc1);
 
-        asegurar(pc1.getPlanificador().getPolitica().getNombre().contains("First-Come"), "Política inicial es FCFS");
+        asegurar(pc1.getPlanificador().getPolitica().getNombre().contains("FCFS"), "Política inicial es FCFS");
 
         // Creamos procesos con distintos requerimientos y prioridades
         PCB pA = new PCB("Proc-A", pc1.getId(), TipoProceso.CPU_BOUND, 3, 100, 100, "", 0, 0, crearPrograma(TipoInstruccion.CPU, 6), 0);
