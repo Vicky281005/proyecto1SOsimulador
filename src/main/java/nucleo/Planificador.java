@@ -181,6 +181,7 @@ public class Planificador {
         }
     }
 
+
     /** Iterador sobre la cola de listos, para observarla sin exponer la lista interna. */
     public Iterador<PCB> iteradorListos() {
         return listos.iterador();

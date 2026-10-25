@@ -46,6 +46,9 @@ public class PanelComputador extends JPanel {
     private final JProgressBar barraRam = new JProgressBar(0, 100);
     private final JComboBox<PoliticaPlanificacion> comboPolitica =
             new JComboBox<>(PoliticaPlanificacion.values());
+    private final JLabel lblQuantum = new JLabel("q:");
+    private final javax.swing.JSpinner spinnerQuantum =
+            new javax.swing.JSpinner(new javax.swing.SpinnerNumberModel(2, 1, 100, 1));
 
     private final ListaVisual nuevos = new ListaVisual();
     private final ListaVisual listos = new ListaVisual();
@@ -55,6 +58,8 @@ public class PanelComputador extends JPanel {
 
     /** Evita que seleccionar la política por código dispare un cambio real. */
     private boolean ajustandoCombo;
+    /** Evita que modificar el spinner por código dispare un cambio real. */
+    private boolean ajustandoQuantum;
 
     /**
      * @param computador computador que se muestra.
@@ -66,6 +71,7 @@ public class PanelComputador extends JPanel {
         construir();
         seleccionarPoliticaActual();
         comboPolitica.addActionListener(e -> cambiarPolitica());
+        spinnerQuantum.addChangeListener(e -> cambiarQuantum());
         actualizar();
     }
 
@@ -80,9 +86,20 @@ public class PanelComputador extends JPanel {
         arriba.add(lblProceso);
         arriba.add(lblRegistros);
         arriba.add(lblDeadline);
+
         JPanel filaPolitica = new JPanel(new BorderLayout(6, 0));
         filaPolitica.add(new JLabel("Política:"), BorderLayout.WEST);
-        filaPolitica.add(comboPolitica, BorderLayout.CENTER);
+
+        JPanel pnlCentroPolitica = new JPanel(new BorderLayout(4, 0));
+        pnlCentroPolitica.add(comboPolitica, BorderLayout.CENTER);
+
+        JPanel pnlQuantum = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.RIGHT, 4, 0));
+        pnlQuantum.add(lblQuantum);
+        spinnerQuantum.setPreferredSize(new java.awt.Dimension(54, 24));
+        pnlQuantum.add(spinnerQuantum);
+        pnlCentroPolitica.add(pnlQuantum, BorderLayout.EAST);
+
+        filaPolitica.add(pnlCentroPolitica, BorderLayout.CENTER);
         arriba.add(filaPolitica);
         barraRam.setStringPainted(true);
         arriba.add(barraRam);
@@ -141,6 +158,21 @@ public class PanelComputador extends JPanel {
         bloqueados.mostrar(lineas(computador.iteradorBloqueados(), true, false));
         terminados.mostrar(lineas(computador.iteradorTerminados(), false, true));
         actualizarBuffers();
+
+        // Sincronizar estado del control de Quantum
+        if (computador.getPlanificador().getPolitica() instanceof planificacion.RoundRobin rr) {
+            lblQuantum.setEnabled(true);
+            spinnerQuantum.setEnabled(true);
+            int q = rr.getQuantum();
+            if (!ajustandoQuantum && ((Integer) spinnerQuantum.getValue()) != q) {
+                ajustandoQuantum = true;
+                spinnerQuantum.setValue(q);
+                ajustandoQuantum = false;
+            }
+        } else {
+            lblQuantum.setEnabled(false);
+            spinnerQuantum.setEnabled(false);
+        }
     }
 
     private void actualizarBuffers() {
@@ -202,6 +234,17 @@ public class PanelComputador extends JPanel {
                 comboPolitica.setSelectedItem(p);
             }
         }
+        boolean esRR = (comboPolitica.getSelectedItem() == PoliticaPlanificacion.ROUND_ROBIN);
+        lblQuantum.setEnabled(esRR);
+        spinnerQuantum.setEnabled(esRR);
+        if (esRR) {
+            int q = computador.getPlanificador().getQuantum();
+            if (q > 0) {
+                ajustandoQuantum = true;
+                spinnerQuantum.setValue(q);
+                ajustandoQuantum = false;
+            }
+        }
         ajustandoCombo = false;
     }
 
@@ -210,9 +253,36 @@ public class PanelComputador extends JPanel {
             return;
         }
         PoliticaPlanificacion elegida = (PoliticaPlanificacion) comboPolitica.getSelectedItem();
+        boolean esRR = (elegida == PoliticaPlanificacion.ROUND_ROBIN);
+        lblQuantum.setEnabled(esRR);
+        spinnerQuantum.setEnabled(esRR);
+
+        int q = (Integer) spinnerQuantum.getValue();
+        if (q <= 0) {
+            q = 2;
+        }
+        final int quantumFinal = q;
+
         // Se cambia con el simulador "en pausa de lectura" para no hacerlo a mitad de un ciclo.
-        simulador.leerEstado(() ->
-                computador.getPlanificador().setPolitica(FabricaPoliticas.crear(elegida)));
+        simulador.leerEstado(() -> {
+            if (esRR) {
+                computador.getPlanificador().setPolitica(
+                        FabricaPoliticas.crear(PoliticaPlanificacion.ROUND_ROBIN, quantumFinal));
+            } else {
+                computador.getPlanificador().setPolitica(FabricaPoliticas.crear(elegida));
+            }
+        });
+    }
+
+    private void cambiarQuantum() {
+        if (ajustandoQuantum || comboPolitica.getSelectedItem() != PoliticaPlanificacion.ROUND_ROBIN) {
+            return;
+        }
+        int nuevoQ = (Integer) spinnerQuantum.getValue();
+        if (nuevoQ <= 0) {
+            return;
+        }
+        simulador.leerEstado(() -> computador.getPlanificador().setQuantum(nuevoQ));
     }
 
     /** Lista de Swing que solo se redibuja cuando su contenido cambió. */
