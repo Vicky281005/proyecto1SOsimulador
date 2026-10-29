@@ -92,6 +92,9 @@ public class Computador implements ComponenteReloj {
 
     @Override
     public void tick(long cicloActual) {
+        // Métrica: cada proceso bloqueado al empezar este ciclo suma un ciclo de bloqueo.
+        contarCiclosBloqueados();
+
         // Procesar bloqueos por latencia de red antes de admitir/despachar
         procesarBloqueosPorLatencia(cicloActual);
 
@@ -145,6 +148,17 @@ public class Computador implements ComponenteReloj {
         evaluarDesalojo(cicloActual);
         if (cpu.estaOciosa()) {
             despachar(cicloActual);
+        }
+    }
+
+    /** Suma un ciclo de tiempo bloqueado a cada proceso que está en la lista de bloqueados. */
+    private void contarCiclosBloqueados() {
+        Iterador<PCB> it = bloqueados.iterador();
+        while (it.haySiguiente()) {
+            PCB p = it.siguiente();
+            if (p != null) {
+                p.incrementarTiempoBloqueado();
+            }
         }
     }
 

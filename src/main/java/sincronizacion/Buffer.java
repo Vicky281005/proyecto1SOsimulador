@@ -24,6 +24,11 @@ public class Buffer {
     private final SemaforoBinario mutex;
     private boolean registradoEnLog;
 
+    /** Total histórico de elementos insertados (producidos) en este buffer. */
+    private long totalProducidos;
+    /** Total histórico de elementos extraídos (consumidos) de este buffer. */
+    private long totalConsumidos;
+
     /**
      * Crea un buffer y reserva su memoria en el computador anfitrión.
      *
@@ -133,6 +138,7 @@ public class Buffer {
 
     public synchronized boolean insertar(Object elemento) {
         elementos.agregar(elemento);
+        totalProducidos++;
         return true;
     }
 
@@ -142,7 +148,18 @@ public class Buffer {
         }
         Object primero = elementos.obtener(0);
         elementos.eliminarEn(0);
+        totalConsumidos++;
         return primero;
+    }
+
+    /** Elementos producidos (insertados) en total desde que se creó el buffer. */
+    public synchronized long getTotalProducidos() {
+        return totalProducidos;
+    }
+
+    /** Elementos consumidos (extraídos) en total desde que se creó el buffer. */
+    public synchronized long getTotalConsumidos() {
+        return totalConsumidos;
     }
 
     public String getResumen() {

@@ -56,6 +56,8 @@ public class VentanaEstado extends JFrame {
     private final JButton btnCrearBuffer = new JButton("Crear buffer");
     private final JButton btnGrafica = new JButton("Gráfica CPU");
     private VentanaGrafica ventanaGrafica;
+    private final JButton btnMetricas = new JButton("Métricas");
+    private VentanaMetricas ventanaMetricas;
     private final JButton btnConfiguracion = new JButton("Configuración…");
     private final JSlider deslizador;
     private final javax.swing.JTextArea areaLog = new javax.swing.JTextArea(6, 80);
@@ -97,6 +99,7 @@ public class VentanaEstado extends JFrame {
         barra.add(btnCrear);
         barra.add(btnCrearBuffer);
         barra.add(btnGrafica);
+        barra.add(btnMetricas);
         barra.add(btnConfiguracion);
         barra.add(new JLabel("Duración del ciclo:"));
         barra.add(deslizador);
@@ -109,6 +112,7 @@ public class VentanaEstado extends JFrame {
         btnCrear.addActionListener(e -> abrirCrearProceso());
         btnCrearBuffer.addActionListener(e -> crearBuffer());
         btnGrafica.addActionListener(e -> abrirGrafica());
+        btnMetricas.addActionListener(e -> abrirMetricas());
         btnConfiguracion.addActionListener(e -> abrirConfiguracion());
 
         areaLog.setEditable(false);
@@ -164,6 +168,15 @@ public class VentanaEstado extends JFrame {
         }
         ventanaGrafica.setVisible(true);
         ventanaGrafica.toFront();
+    }
+
+    /** Abre (o trae al frente) la ventana de métricas de rendimiento. */
+    private void abrirMetricas() {
+        if (ventanaMetricas == null) {
+            ventanaMetricas = new VentanaMetricas(this, simulador);
+        }
+        ventanaMetricas.setVisible(true);
+        ventanaMetricas.toFront();
     }
 
     /** Abre la ventana de configuración y persistencia. */
@@ -269,6 +282,9 @@ public class VentanaEstado extends JFrame {
 
     private void cerrar() {
         temporizador.stop();
+        if (ventanaMetricas != null) {
+            ventanaMetricas.dispose();
+        }
         simulador.detener();
         dispose();
     }
