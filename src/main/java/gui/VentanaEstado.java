@@ -39,6 +39,7 @@ public class VentanaEstado extends JFrame {
 
     /** Cada cuántos milisegundos se refresca la pantalla. */
     private static final int REFRESCO_MS = 150;
+    private static final int DURACION_MINIMA_MS = 20;
     private static final int DURACION_MAXIMA_MS = 1000;
 
     private final Simulador simulador;
@@ -51,6 +52,7 @@ public class VentanaEstado extends JFrame {
     private final JButton btnIniciar = new JButton("Iniciar");
     private final JButton btnPausa = new JButton("Pausar");
     private final JButton btnDetener = new JButton("Detener");
+    private final JButton btnReiniciar = new JButton("Reiniciar");
     private final JButton btnCrear = new JButton("Crear proceso…");
     private VentanaCrearProceso ventanaCrear;
     private final JButton btnCrearBuffer = new JButton("Crear buffer");
@@ -86,29 +88,49 @@ public class VentanaEstado extends JFrame {
             i++;
         }
 
-        // Barra de control.
-        deslizador = new JSlider(0, DURACION_MAXIMA_MS,
-                (int) Math.min(simulador.getDuracionCicloMs(), DURACION_MAXIMA_MS));
+        // Barra de control organizada en dos filas para garantizar visibilidad total
+        deslizador = new JSlider(DURACION_MINIMA_MS, DURACION_MAXIMA_MS,
+                (int) Math.max(DURACION_MINIMA_MS, Math.min(simulador.getDuracionCicloMs(), DURACION_MAXIMA_MS)));
+        deslizador.setMajorTickSpacing(200);
+        deslizador.setMinorTickSpacing(50);
+        deslizador.setPaintTicks(true);
+        deslizador.setToolTipText("Ajusta la duración de cada ciclo en milisegundos");
         deslizador.addChangeListener(e -> aplicarDuracion());
-        JPanel barra = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 6));
-        barra.add(lblCiclo);
-        barra.add(lblEstado);
-        barra.add(btnIniciar);
-        barra.add(btnPausa);
-        barra.add(btnDetener);
-        barra.add(btnCrear);
-        barra.add(btnCrearBuffer);
-        barra.add(btnGrafica);
-        barra.add(btnMetricas);
-        barra.add(btnConfiguracion);
-        barra.add(new JLabel("Duración del ciclo:"));
-        barra.add(deslizador);
-        barra.add(lblDuracion);
-        barra.setBorder(BorderFactory.createEtchedBorder());
+
+        JPanel barra = new JPanel(new GridLayout(2, 1, 0, 4));
+        barra.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createEtchedBorder(),
+                BorderFactory.createEmptyBorder(4, 8, 4, 8)));
+
+        // Fila 1: Botones de control de simulación y acceso a módulos
+        JPanel fila1 = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 2));
+        fila1.add(btnIniciar);
+        fila1.add(btnPausa);
+        fila1.add(btnDetener);
+        fila1.add(btnReiniciar);
+        fila1.add(new javax.swing.JSeparator(javax.swing.SwingConstants.VERTICAL));
+        fila1.add(btnCrear);
+        fila1.add(btnCrearBuffer);
+        fila1.add(btnGrafica);
+        fila1.add(btnMetricas);
+        fila1.add(btnConfiguracion);
+
+        // Fila 2: Indicadores de estado y control de velocidad/duración
+        JPanel fila2 = new JPanel(new FlowLayout(FlowLayout.LEFT, 12, 2));
+        fila2.add(lblCiclo);
+        fila2.add(lblEstado);
+        fila2.add(new javax.swing.JSeparator(javax.swing.SwingConstants.VERTICAL));
+        fila2.add(new JLabel("Duración del ciclo:"));
+        fila2.add(deslizador);
+        fila2.add(lblDuracion);
+
+        barra.add(fila1);
+        barra.add(fila2);
 
         btnIniciar.addActionListener(e -> iniciar());
         btnPausa.addActionListener(e -> pausarOReanudar());
         btnDetener.addActionListener(e -> detener());
+        btnReiniciar.addActionListener(e -> reiniciar());
         btnCrear.addActionListener(e -> abrirCrearProceso());
         btnCrearBuffer.addActionListener(e -> crearBuffer());
         btnGrafica.addActionListener(e -> abrirGrafica());
@@ -192,7 +214,21 @@ public class VentanaEstado extends JFrame {
         while (it.haySiguiente()) {
             comboComp.addItem(it.siguiente());
         }
-        JTextField txtId = new JTextField("BUF-" + System.currentTimeMillis());
+        comboComp.setRenderer(new javax.swing.DefaultListCellRenderer() {
+            @Override
+            public java.awt.Component getListCellRendererComponent(javax.swing.JList<?> lista, Object valor, int i,
+                                                                  boolean sel, boolean foco) {
+                Object texto = valor instanceof Computador c
+                        ? c.getNombre() + " (RAM " + c.getMemoriaTotal() + " KB)" : valor;
+                return super.getListCellRendererComponent(lista, texto, i, sel, foco);
+            }
+        });
+
+        int nBuf = 1;
+        while (simulador.buscarBuffer("B" + nBuf) != null || simulador.buscarBuffer("BUF-" + nBuf) != null) {
+            nBuf++;
+        }
+        JTextField txtId = new JTextField("B" + nBuf);
         JTextField txtCap = new JTextField("5");
         JTextField txtTam = new JTextField("4");
         panel.add(new JLabel("ID del buffer:"));
@@ -279,6 +315,40 @@ public class VentanaEstado extends JFrame {
         refrescar();
     }
 
+    private void reiniciar() {
+        int confirm = JOptionPane.showConfirmDialog(this,
+                "¿Desea reiniciar la simulación al escenario inicial?",
+                "Reiniciar Simulación",
+                JOptionPane.YES_NO_OPTION);
+        if (confirm != JOptionPane.YES_OPTION) {
+            return;
+        }
+        temporizador.stop();
+        cerrarVentanasHijas();
+        simulador.detener();
+        dispose();
+        SwingUtilities.invokeLater(() -> {
+            Simulador nuevo = config.EscenarioDemo.crear();
+            VentanaEstado nuevaVentana = new VentanaEstado(nuevo);
+            nuevaVentana.setVisible(true);
+        });
+    }
+
+    private void cerrarVentanasHijas() {
+        if (ventanaGrafica != null) {
+            ventanaGrafica.dispose();
+            ventanaGrafica = null;
+        }
+        if (ventanaMetricas != null) {
+            ventanaMetricas.dispose();
+            ventanaMetricas = null;
+        }
+        if (ventanaCrear != null) {
+            ventanaCrear.dispose();
+            ventanaCrear = null;
+        }
+    }
+
     private void aplicarDuracion() {
         simulador.setDuracionCicloMs(deslizador.getValue());
         lblDuracion.setText(deslizador.getValue() + " ms");
@@ -286,9 +356,7 @@ public class VentanaEstado extends JFrame {
 
     private void cerrar() {
         temporizador.stop();
-        if (ventanaMetricas != null) {
-            ventanaMetricas.dispose();
-        }
+        cerrarVentanasHijas();
         simulador.detener();
         dispose();
     }
@@ -316,10 +384,12 @@ public class VentanaEstado extends JFrame {
             lblCiclo.setText("Ciclo: " + cicloActual[0]);
             lblEstado.setText("Estado: " + textoEstado());
             btnIniciar.setEnabled(!iniciada && !detenida);
-            btnPausa.setEnabled(iniciada && !detenida);
+            btnPausa.setEnabled(iniciada && !detenida && !simulador.isLimiteAlcanzado());
             btnPausa.setText(simulador.estaPausada() ? "Reanudar" : "Pausar");
-            btnDetener.setEnabled(!detenida);
-            btnCrear.setEnabled(!detenida);
+            btnDetener.setEnabled(iniciada && !detenida);
+            btnReiniciar.setEnabled(true);
+            btnCrear.setEnabled(!detenida && !simulador.isLimiteAlcanzado());
+            btnCrearBuffer.setEnabled(!detenida && !simulador.isLimiteAlcanzado());
 
             if (logSb.length() > 0) {
                 String nuevoTexto = logSb.toString();
@@ -363,7 +433,7 @@ public class VentanaEstado extends JFrame {
 
     private String textoEstado() {
         if (detenida) {
-            return "detenida";
+            return "detenida (haga clic en Reiniciar para comenzar de nuevo)";
         }
         if (!iniciada) {
             return "sin iniciar";
@@ -372,7 +442,7 @@ public class VentanaEstado extends JFrame {
             return "pausada";
         }
         if (simulador.isLimiteAlcanzado()) {
-            return "límite de ciclos alcanzado";
+            return "límite de ciclos alcanzado (detenida)";
         }
         if (!simulador.hayTrabajoPendiente()) {
             return "finalizada / ociosa (esperando nuevos procesos)";

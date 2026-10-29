@@ -67,7 +67,7 @@ public class VentanaGrafica extends JDialog {
                 false);  // urls
         XYPlot grafica = grafico.getXYPlot();
         NumberAxis ejeY = (NumberAxis) grafica.getRangeAxis();
-        ejeY.setRange(0.0, 105.0); // un poco de margen para que la línea del 100 % no quede pegada al borde
+        ejeY.setRange(-2.0, 105.0); // margen inferior y superior para que 0 % y 100 % no se confundan con los bordes
 
         // Fondo blanco y líneas gruesas. Cada línea es más ancha que la anterior: si dos
         // computadores coinciden en 100 %, se ven como bandas de colores en vez de taparse.

@@ -863,6 +863,11 @@ public class Computador implements ComponenteReloj {
         return nombre;
     }
 
+    @Override
+    public String toString() {
+        return nombre;
+    }
+
     public int getId() {
         return id;
     }
