@@ -8,8 +8,8 @@ package enums;
  */
 public enum MotivoBloqueo {
     NINGUNO("Ninguno"),
-    SEMAFORO_VACIO("Esperando semáforo (Buffer vacío)"),
-    SEMAFORO_LLENO("Esperando semáforo (Buffer lleno)"),
+    SEMAFORO_VACIO("Esperando espacio libre (buffer lleno)"),
+    SEMAFORO_LLENO("Esperando elemento (buffer vacío)"),
     MUTEX("Esperando exclusión mutua (Mutex)"),
     LATENCIA_RED("Esperando latencia de red"),
     ESPERA_IO("Esperando operación de E/S");
