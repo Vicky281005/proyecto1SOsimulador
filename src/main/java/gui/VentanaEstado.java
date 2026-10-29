@@ -213,6 +213,10 @@ public class VentanaEstado extends JFrame {
                 JOptionPane.showMessageDialog(this, "Debe ingresar un ID para el buffer.", "Error", JOptionPane.ERROR_MESSAGE);
                 return;
             }
+            if (simulador.buscarBuffer(id) != null) {
+                JOptionPane.showMessageDialog(this, "Ya existe un buffer con el ID " + id + ".", "Error", JOptionPane.ERROR_MESSAGE);
+                return;
+            }
             String capStr = txtCap.getText().trim();
             String tamStr = txtTam.getText().trim();
             int cap;
