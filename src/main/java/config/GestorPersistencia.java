@@ -339,7 +339,8 @@ public final class GestorPersistencia {
             int periodoES = (tipo == TipoProceso.IO_BOUND) ? cp.getPeriodoES() : 0;
             for (int i = 1; i <= totalInstr; i++) {
                 boolean esES = periodoES > 0 && (i % periodoES == 0);
-                programa.agregar(new Instruccion(esES ? TipoInstruccion.READ_IO : TipoInstruccion.CPU));
+                programa.agregar(new Instruccion(esES ? TipoInstruccion.READ_IO : TipoInstruccion.CPU,
+                        esES ? String.valueOf(Math.max(1, cp.getCiclosPorAcceso())) : ""));
             }
         }
 

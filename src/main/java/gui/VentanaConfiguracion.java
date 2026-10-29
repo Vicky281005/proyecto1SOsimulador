@@ -483,6 +483,7 @@ public class VentanaConfiguracion extends JFrame {
 
         JTextField txtCiclosAcceso = new JTextField("1", 4);
         JTextField txtElemReq = new JTextField("1", 4);
+        JLabel lblCiclosAcceso = new JLabel("Ciclos por acceso:");
 
         // Habilitar / deshabilitar según tipo
         Runnable refrescarCamposTipo = () -> {
@@ -491,8 +492,9 @@ public class VentanaConfiguracion extends JFrame {
             boolean esProdCons = tp == TipoProceso.PRODUCTOR || tp == TipoProceso.CONSUMIDOR;
             txtPeriodoES.setEnabled(esIO);
             cbBuffer.setEnabled(esProdCons);
-            txtCiclosAcceso.setEnabled(esProdCons);
+            txtCiclosAcceso.setEnabled(esProdCons || esIO);
             txtElemReq.setEnabled(esProdCons);
+            lblCiclosAcceso.setText(esIO ? "Duración E/S (ciclos):" : "Ciclos por acceso:");
         };
         cbTipo.addActionListener(e -> refrescarCamposTipo.run());
         refrescarCamposTipo.run();
@@ -522,7 +524,7 @@ public class VentanaConfiguracion extends JFrame {
         g.gridx = 1; form.add(txtPeriodoES, g);
         g.gridx = 0; g.gridy = 9; form.add(new JLabel("Buffer Target:"), g);
         g.gridx = 1; form.add(cbBuffer, g);
-        g.gridx = 0; g.gridy = 10; form.add(new JLabel("Ciclos por acceso:"), g);
+        g.gridx = 0; g.gridy = 10; form.add(lblCiclosAcceso, g);
         g.gridx = 1; form.add(txtCiclosAcceso, g);
         g.gridx = 0; g.gridy = 11; form.add(new JLabel("Elementos requeridos:"), g);
         g.gridx = 1; form.add(txtElemReq, g);

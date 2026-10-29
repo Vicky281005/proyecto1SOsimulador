@@ -125,7 +125,7 @@ public class ValidadorProcesoPrueba {
         sim.cargarProceso(ValidadorProceso.construir("B", "4", "100", "1", io, "50", pc, "2", sim.getCicloActual()));
         sim.ejecutar();
         verificar(pc.getCantidadTerminados() == 2, "los 2 procesos terminaron (" + pc.getCantidadTerminados() + ")");
-        verificar(sim.getCicloActual() == 9, "9 ciclos = 5 + 4 (" + sim.getCicloActual() + ")");
+        verificar(sim.getCicloActual() == 12, "12 ciclos = 5 (A) + 4 (B) + 2 (bloqueos E/S) + ciclo fin (" + sim.getCicloActual() + ")");
         sim.detener();
 
         System.out.println();

@@ -134,6 +134,14 @@ public final class ValidadorProceso {
             } else if (numInstrucciones != null && periodo > numInstrucciones) {
                 errores[CAMPO_PERIODO_ES] = "El periodo de E/S no puede ser mayor que el número de instrucciones.";
             }
+            if (cadaCuantos != null && !cadaCuantos.trim().isEmpty()) {
+                Long cada = entero(cadaCuantos);
+                if (cada == null) {
+                    errores[CAMPO_CADA_CUANTOS] = mensajeNoEntero("La duración de E/S");
+                } else if (cada < 1) {
+                    errores[CAMPO_CADA_CUANTOS] = "La duración de E/S debe ser de al menos 1 ciclo.";
+                }
+            }
         }
 
         // Productor / Consumidor
@@ -199,6 +207,9 @@ public final class ValidadorProceso {
             cada = entero(cadaCuantos).intValue();
             req = entero(elementosRequeridos).intValue();
             n = Math.max(n, req * 4);
+        } else if (tipo == TipoProceso.IO_BOUND) {
+            Long c = entero(cadaCuantos);
+            cada = (c != null && c > 0) ? c.intValue() : 2;
         }
 
         ListaEnlazada<Instruccion> programa = new ListaEnlazada<>();
@@ -213,7 +224,8 @@ public final class ValidadorProceso {
         } else {
             for (int i = 1; i <= n; i++) {
                 boolean esES = periodo > 0 && i % periodo == 0;
-                programa.agregar(new Instruccion(esES ? TipoInstruccion.READ_IO : TipoInstruccion.CPU));
+                programa.agregar(new Instruccion(esES ? TipoInstruccion.READ_IO : TipoInstruccion.CPU,
+                        esES ? String.valueOf(cada) : ""));
             }
         }
         return new PCB(nombre.trim(), destino.getId(), tipo,

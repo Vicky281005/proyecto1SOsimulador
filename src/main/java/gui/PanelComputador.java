@@ -216,7 +216,11 @@ public class PanelComputador extends JPanel {
     private String describir(PCB p, boolean conMotivo, boolean terminado) {
         String base = p.getNombre() + " (id " + p.getId() + ")";
         if (conMotivo) {
-            return base + " – " + p.getMotivoBloqueo().getEtiqueta();
+            String motivo = p.getMotivoBloqueo().getEtiqueta();
+            if (p.getCiclosBloqueoRestantes() > 0) {
+                motivo += " (restan: " + p.getCiclosBloqueoRestantes() + " c)";
+            }
+            return base + " – " + motivo;
         }
         if (terminado) {
             return base + " – fin en ciclo " + p.getCicloFin()

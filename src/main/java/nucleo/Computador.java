@@ -98,6 +98,9 @@ public class Computador implements ComponenteReloj {
         // Procesar bloqueos por latencia de red antes de admitir/despachar
         procesarBloqueosPorLatencia(cicloActual);
 
+        // Procesar transiciones a bloqueo diferidas (E/S ejecutada en el ciclo previo en modo KERNEL)
+        procesarBloqueosIOPendientes(cicloActual);
+
         admitir(cicloActual);
 
         // Revisar deadlines y posibles desalos en todo el computador.
@@ -138,14 +141,16 @@ public class Computador implements ComponenteReloj {
                 if (enEjecucion.verificarDeadline(cicloActual)) {
                     terminarPorDeadline(enEjecucion, cicloActual);
                     despachar(cicloActual);
-                } else if (enEjecucion.getTiempoRestante() == 0) {
+                } else if (enEjecucion.getTiempoRestante() == 0 && !enEjecucion.isBloqueoIOPendiente()) {
                     terminar(enEjecucion, cicloActual);
                 }
             }
         }
 
         // Evaluar desalojo al final por quantum.
-        evaluarDesalojo(cicloActual);
+        if (cpu.getProcesoActual() == null || !cpu.getProcesoActual().isBloqueoIOPendiente()) {
+            evaluarDesalojo(cicloActual);
+        }
         if (cpu.estaOciosa()) {
             despachar(cicloActual);
         }
@@ -182,9 +187,7 @@ public class Computador implements ComponenteReloj {
                 }
                 case READ_IO:
                 case WRITE_IO: {
-                    // Por ahora se trata como instrucción de 1 ciclo (modo SO). 
-                    // Se puede bloquear si se requiere.
-                    return false;
+                    return procesarIO(proceso, instr, cicloActual);
                 }
                 default:
                     return false;
@@ -192,6 +195,49 @@ public class Computador implements ComponenteReloj {
         } catch (Exception e) {
             return false;
         }
+    }
+
+    private boolean procesarIO(PCB proceso, Instruccion instr, long cicloActual) {
+        int duracion = Math.max(1, obtenerDuracionIO(proceso, instr));
+        proceso.setCiclosBloqueoRestantes(duracion);
+        proceso.setBloqueoIOPendiente(true);
+        return false;
+    }
+
+    private void procesarBloqueosIOPendientes(long cicloActual) {
+        PCB enCpu = cpu.getProcesoActual();
+        if (enCpu != null && enCpu.isBloqueoIOPendiente()) {
+            enCpu.setBloqueoIOPendiente(false);
+            cpu.liberar();
+            enCpu.bloquear(MotivoBloqueo.ESPERA_IO, "");
+            planificador.eliminarListo(enCpu);
+            bloqueados.agregar(enCpu);
+            simulacion.LogEventos logBlk = (simulador != null) ? simulador.getLogEventos() : null;
+            if (logBlk != null) {
+                logBlk.registrar(simulacion.LogEventos.TipoEvento.BLOQUEO,
+                        "Bloqueado " + enCpu.getNombre() + " en " + nombre + " por "
+                                + MotivoBloqueo.ESPERA_IO.getEtiqueta() + " (" + enCpu.getCiclosBloqueoRestantes() + " ciclos)");
+            }
+        }
+    }
+
+    private int obtenerDuracionIO(PCB proceso, Instruccion instr) {
+        if (instr != null && instr.getParametro() != null && !instr.getParametro().trim().isEmpty()) {
+            try {
+                int d = Integer.parseInt(instr.getParametro().trim());
+                if (d > 0) {
+                    return d;
+                }
+            } catch (NumberFormatException ignored) {
+            }
+        }
+        if (proceso != null && proceso.getCadaCuantoCiclos() > 0) {
+            return proceso.getCadaCuantoCiclos();
+        }
+        if (simulador != null) {
+            return simulador.getDuracionIOCiclos();
+        }
+        return 2;
     }
 
     private boolean procesarSincronizacion(PCB proceso, Instruccion instr, long cicloActual) {
@@ -512,6 +558,7 @@ public class Computador implements ComponenteReloj {
             proceso.setRecursoSemaforoAdquirido(false);
         }
 
+        proceso.setBloqueoIOPendiente(false);
         nuevos.eliminar(proceso);
         bloqueados.eliminar(proceso);
         planificador.eliminarListo(proceso);
@@ -762,29 +809,48 @@ public class Computador implements ComponenteReloj {
                 }
                 p.limpiarOperacionRemotaPendiente();
                 listosParaDespertar.agregar(p);
+            } else if (p.getMotivoBloqueo() == MotivoBloqueo.ESPERA_IO) {
+                long restantes = p.getCiclosBloqueoRestantes();
+                if (restantes > 1) {
+                    p.setCiclosBloqueoRestantes(restantes - 1);
+                    continue;
+                }
+                p.setCiclosBloqueoRestantes(0);
+                listosParaDespertar.agregar(p);
             }
         }
 
-        // Desbloquear procesos que completaron su latencia
+        // Desbloquear procesos que completaron su latencia o E/S
         Iterador<PCB> ides = listosParaDespertar.iterador();
         while (ides.haySiguiente()) {
             PCB dp = ides.siguiente();
+            MotivoBloqueo motivoPrevio = dp.getMotivoBloqueo();
             bloqueados.eliminar(dp);
             dp.setEstado(EstadoProceso.LISTO);
             dp.setMotivoBloqueo(MotivoBloqueo.NINGUNO);
             dp.setCiclosBloqueoRestantes(0);
-            dp.avanzarPasoCpu(cicloActual);
+            if (motivoPrevio == MotivoBloqueo.LATENCIA_RED) {
+                dp.avanzarPasoCpu(cicloActual);
+            }
             if (dp.getTiempoRestante() == 0) {
                 terminar(dp, cicloActual);
             } else {
                 planificador.encolarListo(dp);
+            }
+            simulacion.LogEventos logDesb = (simulador != null) ? simulador.getLogEventos() : null;
+            if (logDesb != null) {
+                String detalle = (motivoPrevio == MotivoBloqueo.ESPERA_IO)
+                        ? " tras completar operación de E/S"
+                        : " tras cumplir latencia de red";
+                logDesb.registrar(simulacion.LogEventos.TipoEvento.DESBLOQUEO,
+                        "Desbloqueado " + dp.getNombre() + " en " + nombre + detalle);
             }
         }
     }
 
     void evaluarDesalojo(long cicloActual) {
         PCB actual = cpu.getProcesoActual();
-        if (actual == null || planificador.estaVacio()) {
+        if (actual == null || planificador.estaVacio() || actual.isBloqueoIOPendiente()) {
             return;
         }
         if (!planificador.esApropiativa()) {
@@ -843,7 +909,7 @@ public class Computador implements ComponenteReloj {
     public void limpiarCpuSiOciosa() {
         if (!cpu.estaOciosa()) {
             PCB actual = cpu.getProcesoActual();
-            if (actual == null || actual.getTiempoRestante() == 0 || actual.getEstado() == EstadoProceso.TERMINADO) {
+            if (actual == null || (actual.getTiempoRestante() == 0 && !actual.isBloqueoIOPendiente()) || actual.getEstado() == EstadoProceso.TERMINADO) {
                 cpu.liberar();
             }
         }

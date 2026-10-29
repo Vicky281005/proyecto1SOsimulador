@@ -47,6 +47,7 @@ public class VentanaCrearProceso extends JDialog {
             new TipoProceso[]{TipoProceso.CPU_BOUND, TipoProceso.IO_BOUND, TipoProceso.PRODUCTOR, TipoProceso.CONSUMIDOR});
     private final JComboBox<Computador> comboComputador = new JComboBox<>();
     private final JComboBox<Buffer> comboBuffer = new JComboBox<>();
+    private final JLabel lblCadaCuantos = new JLabel("Cada cuántos ciclos:");
     private final JTextField txtCadaCuantos = new JTextField("1", 14);
     private final JTextField txtElementosRequeridos = new JTextField("5", 14);
     private final JLabel lblAviso = new JLabel(" ");
@@ -131,7 +132,7 @@ public class VentanaCrearProceso extends JDialog {
         fila(form, g, 6, "Computador destino:", comboComputador);
         fila(form, g, 7, "E/S cada N instrucciones:", txtPeriodoEs);
         fila(form, g, 8, "Buffer objetivo:", comboBuffer);
-        fila(form, g, 9, "Cada cuántos ciclos:", txtCadaCuantos);
+        fila(form, g, 9, lblCadaCuantos, txtCadaCuantos);
         fila(form, g, 10, "Elementos requeridos:", txtElementosRequeridos);
 
         lblAviso.setVerticalAlignment(JLabel.TOP);
@@ -158,11 +159,15 @@ public class VentanaCrearProceso extends JDialog {
     }
 
     private void fila(JPanel p, GridBagConstraints g, int fila, String etiqueta, Component campo) {
+        fila(p, g, fila, new JLabel(etiqueta), campo);
+    }
+
+    private void fila(JPanel p, GridBagConstraints g, int fila, JLabel etiqueta, Component campo) {
         g.gridwidth = 1;
         g.gridy = fila;
         g.gridx = 0;
         g.weightx = 0;
-        p.add(new JLabel(etiqueta), g);
+        p.add(etiqueta, g);
         g.gridx = 1;
         g.weightx = 1;
         p.add(campo, g);
@@ -176,8 +181,14 @@ public class VentanaCrearProceso extends JDialog {
         txtPeriodoEs.setEnabled(esIO);
         txtInstrucciones.setEnabled(!esProdCons);
         comboBuffer.setEnabled(esProdCons);
-        txtCadaCuantos.setEnabled(esProdCons);
+        txtCadaCuantos.setEnabled(esProdCons || esIO);
         txtElementosRequeridos.setEnabled(esProdCons);
+        if (lblCadaCuantos != null) {
+            lblCadaCuantos.setText(esIO ? "Duración E/S (ciclos):" : "Cada cuántos ciclos:");
+        }
+        if (esIO && "1".equals(txtCadaCuantos.getText().trim())) {
+            txtCadaCuantos.setText("2");
+        }
     }
 
     /** Valida el formulario y, si todo es correcto, envía el proceso al simulador. */

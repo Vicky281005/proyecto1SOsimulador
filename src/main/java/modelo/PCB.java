@@ -62,6 +62,7 @@ public class PCB {
     // Productor/Consumidor
     private int elementosProducidos;
     private int elementosConsumidos;
+    private boolean bloqueoIOPendiente;
 
     public PCB(String nombre, int computadorAsignado, TipoProceso tipo, int prioridad, 
                long memoriaAsignada, long deadlineRelativo, 
@@ -155,7 +156,7 @@ public class PCB {
      * @return true si el proceso venció su deadline y debe ser terminado por el sistema.
      */
     public boolean verificarDeadline(long cicloActual) {
-        if (this.tiempoRestante > 0 && cicloActual >= this.deadlineAbsoluto) {
+        if (this.tiempoRestante > 0 && cicloActual > this.deadlineAbsoluto) {
             this.deadlineCumplido = false;
             return true;
         }
@@ -254,6 +255,7 @@ public class PCB {
             this.motivoBloqueo = MotivoBloqueo.NINGUNO;
             this.bufferBloqueadoId = "";
             this.ciclosBloqueoRestantes = 0;
+            this.bloqueoIOPendiente = false;
             limpiarOperacionRemotaPendiente();
         }
     }
@@ -341,5 +343,14 @@ public class PCB {
         this.estado = EstadoProceso.LISTO;
         this.motivoBloqueo = MotivoBloqueo.NINGUNO;
         this.ciclosBloqueoRestantes = 0;
+        this.bloqueoIOPendiente = false;
+    }
+
+    public boolean isBloqueoIOPendiente() {
+        return bloqueoIOPendiente;
+    }
+
+    public void setBloqueoIOPendiente(boolean bloqueoIOPendiente) {
+        this.bloqueoIOPendiente = bloqueoIOPendiente;
     }
 }

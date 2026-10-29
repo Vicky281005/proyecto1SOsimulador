@@ -90,6 +90,9 @@ public class Simulador {
     /** Latencia de red configurable para accesos remotos a buffers (ciclos). */
     private int latenciaRedCiclos = 3;
 
+    /** Duración por defecto de una operación de E/S en ciclos. */
+    private int duracionIOCiclos = 2;
+
     /**
      * Si es true, el reloj sigue avanzando ciclo a ciclo aun cuando no haya procesos
      * activos, manteniendo la simulación en marcha y la CPU ociosa.
@@ -115,6 +118,17 @@ public class Simulador {
             throw new IllegalArgumentException("La latencia de red no puede ser negativa.");
         }
         this.latenciaRedCiclos = latenciaRedCiclos;
+    }
+
+    public int getDuracionIOCiclos() {
+        return duracionIOCiclos;
+    }
+
+    public void setDuracionIOCiclos(int duracionIOCiclos) {
+        if (duracionIOCiclos <= 0) {
+            throw new IllegalArgumentException("La duración de E/S debe ser mayor que cero.");
+        }
+        this.duracionIOCiclos = duracionIOCiclos;
     }
 
     public void registrarBuffer(Buffer buffer) {
