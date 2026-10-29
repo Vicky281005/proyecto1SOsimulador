@@ -428,9 +428,14 @@ public class PersistenciaPrueba {
         Computador pc2 = sim.buscarComputador(2);
         Computador pc3 = sim.buscarComputador(3);
 
-        asegurar(pc1.getMemoriaDisponible() == 10, "PC-1 operando con RAM al 99% (10 MB libres de 1000 MB)");
-        asegurar(pc2.getMemoriaDisponible() == 10, "PC-2 operando con RAM al 99% (10 MB libres de 1000 MB)");
-        asegurar(pc3.getMemoriaDisponible() == 10, "PC-3 operando con RAM al 99% (10 MB libres de 1000 MB)");
+        // Los procesos ocupan RAM al ser admitidos (ciclo 1), no al cargarse: antes solo están los buffers.
+        asegurar(pc1.getMemoriaDisponible() == 992, "PC-1 solo con su buffer antes de admitir procesos (992 de 1000 libres)");
+        asegurar(pc2.getMemoriaDisponible() == 992, "PC-2 solo con su buffer antes de admitir procesos (992 de 1000 libres)");
+        asegurar(pc3.getMemoriaDisponible() == 1000, "PC-3 sin buffers antes de admitir procesos (1000 de 1000 libres)");
+        sim.getReloj().avanzarCiclo();
+        // Tras la admisión: PC-2 y PC-3 quedan al 99% (10 libres). PC-1 ya terminó su productor y liberó la RAM.
+        asegurar(pc2.getMemoriaDisponible() == 10, "PC-2 operando con RAM al 99% tras admitir procesos (10 libres de 1000)");
+        asegurar(pc3.getMemoriaDisponible() == 10, "PC-3 operando con RAM al 99% tras admitir procesos (10 libres de 1000)");
 
         sim.ejecutar();
 
