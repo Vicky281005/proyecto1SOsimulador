@@ -9,7 +9,8 @@ import nucleo.Computador;
  *
  * <p>Produce una tabla de texto con las métricas de cada proceso terminado
  * (agrupadas por computador, mostrando su política) y un resumen global con
- * los totales y el uso de CPU de cada computador. No imprime por sí solo si
+ * los totales y el uso de CPU de cada computador, más las métricas de rendimiento
+ * de {@link MetricasSimulacion}. No imprime por sí solo si
  * se usa {@link #generar()}: eso permite reutilizar el mismo texto en la
  * consola, en logs o, más adelante, mostrarlo en la GUI.</p>
  *
@@ -50,6 +51,7 @@ public class ReporteSimulacion {
             agregarComputador(reporte, computadores.siguiente());
         }
         agregarResumenGlobal(reporte);
+        agregarMetricas(reporte);
         return reporte.toString();
     }
 
@@ -88,6 +90,15 @@ public class ReporteSimulacion {
                     retorno,
                     proceso.isDeadlineCumplido() ? "cumplido" : "INCUMPLIDO"));
         }
+    }
+
+    /** Añade las métricas de rendimiento (throughput, respuesta, deadlines, equidad, buffers...). */
+    private void agregarMetricas(StringBuilder reporte) {
+        reporte.append('\n');
+        reporte.append("-------------------------------------------------\n");
+        reporte.append(" Métricas de rendimiento\n");
+        reporte.append("-------------------------------------------------\n");
+        reporte.append(MetricasSimulacion.calcular(simulador).formatear());
     }
 
     private void agregarResumenGlobal(StringBuilder reporte) {

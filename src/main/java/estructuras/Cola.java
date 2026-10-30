@@ -1,5 +1,15 @@
 package estructuras;
 
+/**
+ * Cola FIFO de ÁvilaOS con seguridad de hilos (thread-safe).
+ *
+ * <p>Todos los métodos de acceso y modificación están sincronizados mediante
+ * monitores de instancia. El iterador realiza una captura defensiva (snapshot)
+ * en un arreglo al instanciarse, permitiendo recorridos seguros en tiempo O(n)
+ * inmunes a modificaciones concurrentes.</p>
+ *
+ * @param <T> tipo de elementos en la cola.
+ */
 public class Cola<T> {
     private Nodo<T> frente;
     private Nodo<T> fin;
@@ -12,7 +22,7 @@ public class Cola<T> {
     }
 
     // Agrega un elemento al final de la cola
-    public void encolar(T dato) {
+    public synchronized void encolar(T dato) {
         Nodo<T> nuevoNodo = new Nodo<>(dato);
         if (estaVacia()) {
             this.frente = nuevoNodo;
@@ -24,7 +34,7 @@ public class Cola<T> {
     }
 
     // Elimina y devuelve el elemento al frente de la cola
-    public T desencolar() {
+    public synchronized T desencolar() {
         if (estaVacia()) {
             return null;
         }
@@ -38,7 +48,7 @@ public class Cola<T> {
     }
 
     // Muestra el elemento al frente sin eliminarlo
-    public T frente() {
+    public synchronized T frente() {
         if (estaVacia()) {
             return null;
         }
@@ -46,7 +56,7 @@ public class Cola<T> {
     }
 
     // Observa el elemento en una posicion sin alterar la cola
-    public T obtener(int indice) {
+    public synchronized T obtener(int indice) {
         if (indice < 0 || indice >= tamano) {
             return null;
         }
@@ -57,7 +67,7 @@ public class Cola<T> {
         return actual.getDato();
     }
 
-    public boolean contiene(T dato) {
+    public synchronized boolean contiene(T dato) {
         Nodo<T> actual = this.frente;
         while (actual != null) {
             if (sonIguales(actual.getDato(), dato)) {
@@ -68,37 +78,47 @@ public class Cola<T> {
         return false;
     }
 
-    public void vaciar() {
+    public synchronized void vaciar() {
         this.frente = null;
         this.fin = null;
         this.tamano = 0;
     }
 
     // Verifica si la cola esta vacia
-    public boolean estaVacia() {
+    public synchronized boolean estaVacia() {
         return this.frente == null;
     }
 
     // Obtiene la cantidad de elementos en la cola
-    public int getTamano() {
+    public synchronized int getTamano() {
         return this.tamano;
     }
 
-    // Iterador propio para que la GUI recorra la cola en un solo paso O(n)
-    public Iterador<T> iterador() {
+    // Iterador propio con snapshot defensivo: recorrido O(n) seguro contra modificaciones concurrentes
+    public synchronized Iterador<T> iterador() {
+        final Object[] elementos = new Object[tamano];
+        Nodo<T> act = frente;
+        int idx = 0;
+        while (act != null && idx < tamano) {
+            elementos[idx++] = act.getDato();
+            act = act.getSiguiente();
+        }
+        final int total = idx;
         return new Iterador<T>() {
-            private Nodo<T> actual = frente;
+            private int cursor = 0;
 
             @Override
             public boolean haySiguiente() {
-                return actual != null;
+                return cursor < total;
             }
 
+            @SuppressWarnings("unchecked")
             @Override
             public T siguiente() {
-                T dato = actual.getDato();
-                actual = actual.getSiguiente();
-                return dato;
+                if (!haySiguiente()) {
+                    return null;
+                }
+                return (T) elementos[cursor++];
             }
         };
     }

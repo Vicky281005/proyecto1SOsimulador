@@ -22,6 +22,7 @@ import javax.swing.border.Border;
 import modelo.PCB;
 import nucleo.Computador;
 import simulacion.Simulador;
+import sincronizacion.Buffer;
 
 /**
  * Vista 1 de ÁvilaOS: formulario para crear procesos mientras la simulación
@@ -43,8 +44,12 @@ public class VentanaCrearProceso extends JDialog {
     private final JTextField txtDeadline = new JTextField("50", 14);
     private final JTextField txtPeriodoEs = new JTextField("3", 14);
     private final JComboBox<TipoProceso> comboTipo = new JComboBox<>(
-            new TipoProceso[]{TipoProceso.CPU_BOUND, TipoProceso.IO_BOUND});
+            new TipoProceso[]{TipoProceso.CPU_BOUND, TipoProceso.IO_BOUND, TipoProceso.PRODUCTOR, TipoProceso.CONSUMIDOR});
     private final JComboBox<Computador> comboComputador = new JComboBox<>();
+    private final JComboBox<Buffer> comboBuffer = new JComboBox<>();
+    private final JLabel lblCadaCuantos = new JLabel("Cada cuántos ciclos:");
+    private final JTextField txtCadaCuantos = new JTextField("1", 14);
+    private final JTextField txtElementosRequeridos = new JTextField("5", 14);
     private final JLabel lblAviso = new JLabel(" ");
 
     /** Campos en el mismo orden que los índices de {@link ValidadorProceso}. */
@@ -82,13 +87,32 @@ public class VentanaCrearProceso extends JDialog {
         campos[ValidadorProceso.CAMPO_DEADLINE] = txtDeadline;
         campos[ValidadorProceso.CAMPO_COMPUTADOR] = comboComputador;
         campos[ValidadorProceso.CAMPO_PERIODO_ES] = txtPeriodoEs;
+        campos[ValidadorProceso.CAMPO_BUFFER] = comboBuffer;
+        campos[ValidadorProceso.CAMPO_CADA_CUANTOS] = txtCadaCuantos;
+        campos[ValidadorProceso.CAMPO_ELEMENTOS_REQUERIDOS] = txtElementosRequeridos;
 
+        actualizarBuffers();
         construir();
-        comboTipo.addActionListener(e -> actualizarCampoPeriodo());
-        actualizarCampoPeriodo();
+        comboTipo.addActionListener(e -> actualizarCampos());
+        actualizarCampos();
         pack();
         setResizable(false);
         setLocationRelativeTo(dueno);
+    }
+
+    public void actualizarBuffers() {
+        comboBuffer.removeAllItems();
+        Iterador<Buffer> it = simulador.iteradorBuffers();
+        while (it.haySiguiente()) {
+            comboBuffer.addItem(it.siguiente());
+        }
+        comboBuffer.setRenderer(new DefaultListCellRenderer() {
+            @Override
+            public Component getListCellRendererComponent(JList<?> lista, Object valor, int i, boolean sel, boolean foco) {
+                Object texto = valor instanceof Buffer b ? b.getId() + " [" + b.getCantidadElementos() + "/" + b.getCapacidad() + "]" : valor;
+                return super.getListCellRendererComponent(lista, texto, i, sel, foco);
+            }
+        });
     }
 
     private void construir() {
@@ -107,21 +131,27 @@ public class VentanaCrearProceso extends JDialog {
         fila(form, g, 5, "Deadline (ciclos):", txtDeadline);
         fila(form, g, 6, "Computador destino:", comboComputador);
         fila(form, g, 7, "E/S cada N instrucciones:", txtPeriodoEs);
+        fila(form, g, 8, "Buffer objetivo:", comboBuffer);
+        fila(form, g, 9, lblCadaCuantos, txtCadaCuantos);
+        fila(form, g, 10, "Elementos requeridos:", txtElementosRequeridos);
 
         lblAviso.setVerticalAlignment(JLabel.TOP);
         g.gridx = 0;
-        g.gridy = 8;
+        g.gridy = 11;
         g.gridwidth = 2;
         form.add(lblAviso, g);
 
         JButton btnCrear = new JButton("Crear proceso");
         JButton btnLimpiar = new JButton("Limpiar");
+        JButton btnActualizarBuffers = new JButton("Actualizar buffers");
         btnCrear.addActionListener(e -> crear());
         btnLimpiar.addActionListener(e -> limpiar());
+        btnActualizarBuffers.addActionListener(e -> { actualizarBuffers(); actualizarCampos(); });
         JPanel botones = new JPanel(new FlowLayout(FlowLayout.RIGHT));
+        botones.add(btnActualizarBuffers);
         botones.add(btnLimpiar);
         botones.add(btnCrear);
-        g.gridy = 9;
+        g.gridy = 12;
         form.add(botones, g);
 
         setContentPane(form);
@@ -129,28 +159,46 @@ public class VentanaCrearProceso extends JDialog {
     }
 
     private void fila(JPanel p, GridBagConstraints g, int fila, String etiqueta, Component campo) {
+        fila(p, g, fila, new JLabel(etiqueta), campo);
+    }
+
+    private void fila(JPanel p, GridBagConstraints g, int fila, JLabel etiqueta, Component campo) {
         g.gridwidth = 1;
         g.gridy = fila;
         g.gridx = 0;
         g.weightx = 0;
-        p.add(new JLabel(etiqueta), g);
+        p.add(etiqueta, g);
         g.gridx = 1;
         g.weightx = 1;
         p.add(campo, g);
     }
 
     /** El periodo de E/S solo tiene sentido para procesos I/O Bound. */
-    private void actualizarCampoPeriodo() {
-        txtPeriodoEs.setEnabled(comboTipo.getSelectedItem() == TipoProceso.IO_BOUND);
+    private void actualizarCampos() {
+        TipoProceso tipo = (TipoProceso) comboTipo.getSelectedItem();
+        boolean esIO = tipo == TipoProceso.IO_BOUND;
+        boolean esProdCons = tipo == TipoProceso.PRODUCTOR || tipo == TipoProceso.CONSUMIDOR;
+        txtPeriodoEs.setEnabled(esIO);
+        txtInstrucciones.setEnabled(!esProdCons);
+        comboBuffer.setEnabled(esProdCons);
+        txtCadaCuantos.setEnabled(esProdCons || esIO);
+        txtElementosRequeridos.setEnabled(esProdCons);
+        if (lblCadaCuantos != null) {
+            lblCadaCuantos.setText(esIO ? "Duración E/S (ciclos):" : "Cada cuántos ciclos:");
+        }
+        if (esIO && "1".equals(txtCadaCuantos.getText().trim())) {
+            txtCadaCuantos.setText("2");
+        }
     }
 
     /** Valida el formulario y, si todo es correcto, envía el proceso al simulador. */
     private void crear() {
         TipoProceso tipo = (TipoProceso) comboTipo.getSelectedItem();
         Computador destino = (Computador) comboComputador.getSelectedItem();
+        String bufferId = comboBuffer.getSelectedItem() instanceof Buffer b ? b.getId() : null;
         String[] errores = ValidadorProceso.validar(txtNombre.getText(), txtInstrucciones.getText(),
                 txtMemoria.getText(), txtPrioridad.getText(), tipo, txtDeadline.getText(),
-                destino, txtPeriodoEs.getText());
+                destino, txtPeriodoEs.getText(), bufferId, txtCadaCuantos.getText(), txtElementosRequeridos.getText());
 
         if (!ValidadorProceso.esValido(errores)) {
             marcarErrores(errores);
@@ -159,7 +207,7 @@ public class VentanaCrearProceso extends JDialog {
         try {
             PCB proceso = ValidadorProceso.construir(txtNombre.getText(), txtInstrucciones.getText(),
                     txtMemoria.getText(), txtPrioridad.getText(), tipo, txtDeadline.getText(),
-                    destino, txtPeriodoEs.getText(), simulador.getCicloActual());
+                    destino, txtPeriodoEs.getText(), bufferId, txtCadaCuantos.getText(), txtElementosRequeridos.getText(), simulador.getCicloActual());
             simulador.cargarProceso(proceso);
             limpiarMarcas();
             mostrar("Proceso " + proceso.getNombre() + " (id " + proceso.getId()
@@ -197,9 +245,13 @@ public class VentanaCrearProceso extends JDialog {
         txtPrioridad.setText("1");
         txtDeadline.setText("50");
         txtPeriodoEs.setText("3");
+        txtCadaCuantos.setText("1");
+        txtElementosRequeridos.setText("5");
         comboTipo.setSelectedIndex(0);
+        actualizarBuffers();
         limpiarMarcas();
         mostrar(" ", Color.BLACK);
+        actualizarCampos();
         pack();
     }
 

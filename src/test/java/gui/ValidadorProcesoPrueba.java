@@ -71,7 +71,7 @@ public class ValidadorProcesoPrueba {
         verificar(soloFalla(v("P", "10", "100", "1", cpu, "100001", pc, ""), ValidadorProceso.CAMPO_DEADLINE), "deadline 100001");
         verificar(soloFalla(v("P", "10", "100", "1", cpu, "", pc, ""), ValidadorProceso.CAMPO_DEADLINE), "deadline vacío");
         verificar(soloFalla(v("P", "10", "100", "1", null, "50", pc, ""), ValidadorProceso.CAMPO_TIPO), "sin tipo");
-        verificar(soloFalla(v("P", "10", "100", "1", TipoProceso.PRODUCTOR, "50", pc, ""), ValidadorProceso.CAMPO_TIPO), "tipo todavía no soportado (Productor)");
+        // PRODUCTOR/CONSUMIDOR ahora soportados con campos extra - se valida en otro test
         verificar(soloFalla(v("P", "10", "100", "1", cpu, "50", null, ""), ValidadorProceso.CAMPO_COMPUTADOR), "sin computador destino");
 
         System.out.println("3) el periodo de E/S solo se valida en I/O Bound");
@@ -125,7 +125,7 @@ public class ValidadorProcesoPrueba {
         sim.cargarProceso(ValidadorProceso.construir("B", "4", "100", "1", io, "50", pc, "2", sim.getCicloActual()));
         sim.ejecutar();
         verificar(pc.getCantidadTerminados() == 2, "los 2 procesos terminaron (" + pc.getCantidadTerminados() + ")");
-        verificar(sim.getCicloActual() == 9, "9 ciclos = 5 + 4 (" + sim.getCicloActual() + ")");
+        verificar(sim.getCicloActual() == 12, "12 ciclos = 5 (A) + 4 (B) + 2 (bloqueos E/S) + ciclo fin (" + sim.getCicloActual() + ")");
         sim.detener();
 
         System.out.println();

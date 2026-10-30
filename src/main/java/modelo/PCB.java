@@ -38,6 +38,14 @@ public class PCB {
     private String bufferBloqueadoId;
     private long ciclosBloqueoRestantes;
 
+    // Acceso remoto pendiente (latencia de red)
+    private enums.TipoInstruccion operacionRemotaPendiente;
+    private String bufferRemotoPendienteId;
+    private boolean mutexRemotoRetenido;
+
+    // Bandera de recurso previamente adquirido (vacíos/llenos) en protocolo Productor-Consumidor (Stallings)
+    private boolean recursoSemaforoAdquirido;
+
     // Configuración Inicial Productor / Consumidor (Metadatos)
     private String idBufferTarget;
     private int elementosRequeridos;
@@ -50,6 +58,11 @@ public class PCB {
     private long tiempoBloqueadoAcumulado;
     private long ciclosCpuConsumidos;
     private boolean deadlineCumplido;
+
+    // Productor/Consumidor
+    private int elementosProducidos;
+    private int elementosConsumidos;
+    private boolean bloqueoIOPendiente;
 
     public PCB(String nombre, int computadorAsignado, TipoProceso tipo, int prioridad, 
                long memoriaAsignada, long deadlineRelativo, 
@@ -143,7 +156,7 @@ public class PCB {
      * @return true si el proceso venció su deadline y debe ser terminado por el sistema.
      */
     public boolean verificarDeadline(long cicloActual) {
-        if (this.tiempoRestante > 0 && cicloActual >= this.deadlineAbsoluto) {
+        if (this.tiempoRestante > 0 && cicloActual > this.deadlineAbsoluto) {
             this.deadlineCumplido = false;
             return true;
         }
@@ -163,6 +176,36 @@ public class PCB {
         this.estado = EstadoProceso.BLOQUEADO;
         this.motivoBloqueo = (motivo != null) ? motivo : MotivoBloqueo.NINGUNO;
         this.bufferBloqueadoId = (bufferId != null) ? bufferId : "";
+    }
+
+    public enums.TipoInstruccion getOperacionRemotaPendiente() {
+        return operacionRemotaPendiente;
+    }
+
+    public void setOperacionRemotaPendiente(enums.TipoInstruccion operacionRemotaPendiente) {
+        this.operacionRemotaPendiente = operacionRemotaPendiente;
+    }
+
+    public String getBufferRemotoPendienteId() {
+        return bufferRemotoPendienteId;
+    }
+
+    public void setBufferRemotoPendienteId(String bufferRemotoPendienteId) {
+        this.bufferRemotoPendienteId = bufferRemotoPendienteId;
+    }
+
+    public boolean isMutexRemotoRetenido() {
+        return mutexRemotoRetenido;
+    }
+
+    public void setMutexRemotoRetenido(boolean mutexRemotoRetenido) {
+        this.mutexRemotoRetenido = mutexRemotoRetenido;
+    }
+
+    public void limpiarOperacionRemotaPendiente() {
+        this.operacionRemotaPendiente = null;
+        this.bufferRemotoPendienteId = null;
+        this.mutexRemotoRetenido = false;
     }
 
     /**
@@ -212,6 +255,8 @@ public class PCB {
             this.motivoBloqueo = MotivoBloqueo.NINGUNO;
             this.bufferBloqueadoId = "";
             this.ciclosBloqueoRestantes = 0;
+            this.bloqueoIOPendiente = false;
+            limpiarOperacionRemotaPendiente();
         }
     }
     
@@ -266,4 +311,46 @@ public class PCB {
     public long getCiclosCpuConsumidos() { return ciclosCpuConsumidos; }
     public boolean isDeadlineCumplido() { return deadlineCumplido; }
     public void setDeadlineCumplido(boolean deadlineCumplido) { this.deadlineCumplido = deadlineCumplido; }
+
+    public int getElementosProducidos() { return elementosProducidos; }
+    public void incrementarElementosProducidos() { this.elementosProducidos++; }
+
+    public int getElementosConsumidos() { return elementosConsumidos; }
+    public void incrementarElementosConsumidos() { this.elementosConsumidos++; }
+
+    public boolean isRecursoSemaforoAdquirido() { return recursoSemaforoAdquirido; }
+    public void setRecursoSemaforoAdquirido(boolean recursoSemaforoAdquirido) { this.recursoSemaforoAdquirido = recursoSemaforoAdquirido; }
+
+    private boolean creacionRegistradaEnLog;
+
+    public boolean isCreacionRegistradaEnLog() {
+        return creacionRegistradaEnLog;
+    }
+
+    public void setCreacionRegistradaEnLog(boolean creacionRegistradaEnLog) {
+        this.creacionRegistradaEnLog = creacionRegistradaEnLog;
+    }
+
+    public long getMemoriaRequerida() {
+        return memoriaAsignada;
+    }
+
+    public int getIdComputador() {
+        return computadorAsignado;
+    }
+
+    public void desbloquear() {
+        this.estado = EstadoProceso.LISTO;
+        this.motivoBloqueo = MotivoBloqueo.NINGUNO;
+        this.ciclosBloqueoRestantes = 0;
+        this.bloqueoIOPendiente = false;
+    }
+
+    public boolean isBloqueoIOPendiente() {
+        return bloqueoIOPendiente;
+    }
+
+    public void setBloqueoIOPendiente(boolean bloqueoIOPendiente) {
+        this.bloqueoIOPendiente = bloqueoIOPendiente;
+    }
 }

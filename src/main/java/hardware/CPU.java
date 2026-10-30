@@ -61,6 +61,22 @@ public class CPU implements ComponenteReloj {
         this.ciclosProcesoActual = 0;
     }
 
+    /**
+     * Desaloja el proceso en ejecución de la CPU. Alias de {@link #liberar()}.
+     */
+    public void desalojar() {
+        liberar();
+    }
+
+    /**
+     * Asigna un proceso a la CPU para su ejecución. Alias de {@link #cargarProceso(PCB)}.
+     *
+     * @param proceso proceso a ejecutar.
+     */
+    public void asignar(PCB proceso) {
+        cargarProceso(proceso);
+    }
+
     /** Indica si la CPU no tiene ningún proceso cargado. */
     public boolean estaOciosa() {
         return procesoActual == null;
@@ -92,7 +108,29 @@ public class CPU implements ComponenteReloj {
         return tipo == TipoInstruccion.SEM_WAIT
                 || tipo == TipoInstruccion.SEM_SIGNAL
                 || tipo == TipoInstruccion.PRODUCIR
-                || tipo == TipoInstruccion.CONSUMIR;
+                || tipo == TipoInstruccion.CONSUMIR
+                || tipo == TipoInstruccion.READ_IO
+                || tipo == TipoInstruccion.WRITE_IO;
+    }
+
+    /**
+     * Sincroniza el modo de CPU al especificado.
+     *
+     * @param modo nuevo modo de operación (USUARIO o KERNEL).
+     */
+    public void setModo(ModoCPU modo) {
+        this.modo = (modo != null) ? modo : ModoCPU.USUARIO;
+    }
+
+    /**
+     * Registra la ejecución de una instrucción del sistema operativo en modo kernel.
+     * Sincroniza el modo a {@link ModoCPU#KERNEL} e incrementa los ciclos ejecutados
+     * de la CPU y del proceso actual (para el control del quantum).
+     */
+    public void registrarPasoEjecutado() {
+        this.modo = ModoCPU.KERNEL;
+        this.ciclosEjecutados++;
+        this.ciclosProcesoActual++;
     }
 
     @Override
