@@ -37,12 +37,11 @@ public class DiscoSimulado implements ComponenteReloj {
     private boolean direccionAscendente;
     private int velocidadCabezal;
 
-    private final ListaEnlazada<SolicitudES> colaES = new ListaEnlazada<>();
+    private final PlanificadorDisco planificador = new PlanificadorDisco(PoliticaDisco.FIFO);
     private SolicitudES solicitudActual;
     private int metaExtremoPendiente = -1;
 
     private PoliticaDisco politicaActual = PoliticaDisco.FIFO;
-    private PoliticaPlanificacionDisco estrategiaActiva;
 
     private EscuchaFinES escuchaFinES;
     private LogEventos logEventos;
@@ -188,11 +187,15 @@ public class DiscoSimulado implements ComponenteReloj {
     }
 
     public void setEstrategiaActiva(PoliticaPlanificacionDisco estrategia) {
+        if (estrategia == null) {
+            return;
+        }
         mutex.acquireUninterruptibly();
         try {
-            this.estrategiaActiva = estrategia;
-            if (estrategia != null) {
-                this.politicaActual = estrategia.getTipo();
+            this.planificador.setEstrategia(estrategia);
+            this.politicaActual = estrategia.getTipo();
+            if (politicaActual != PoliticaDisco.SCAN && politicaActual != PoliticaDisco.C_SCAN) {
+                this.metaExtremoPendiente = -1;
             }
         } finally {
             mutex.release();
@@ -205,10 +208,18 @@ public class DiscoSimulado implements ComponenteReloj {
         }
         mutex.acquireUninterruptibly();
         try {
+            this.planificador.setPolitica(politica);
             this.politicaActual = politica;
+            if (politica != PoliticaDisco.SCAN && politica != PoliticaDisco.C_SCAN) {
+                this.metaExtremoPendiente = -1;
+            }
         } finally {
             mutex.release();
         }
+    }
+
+    public PlanificadorDisco getPlanificador() {
+        return planificador;
     }
 
     public PoliticaDisco getPoliticaActual() {
@@ -444,7 +455,7 @@ public class DiscoSimulado implements ComponenteReloj {
         }
         mutex.acquireUninterruptibly();
         try {
-            colaES.agregar(solicitud);
+            planificador.encolar(solicitud);
         } finally {
             mutex.release();
         }
@@ -459,7 +470,7 @@ public class DiscoSimulado implements ComponenteReloj {
 
         mutex.acquireUninterruptibly();
         try {
-            if (solicitudActual == null && !colaES.estaVacia()) {
+            if (solicitudActual == null && !planificador.estaVacia()) {
                 seleccionarSiguienteLocked(cicloActual);
             }
 
@@ -521,12 +532,8 @@ public class DiscoSimulado implements ComponenteReloj {
 
     private void seleccionarSiguienteLocked(long cicloActual) {
         int limiteSuperior = calcularLimiteSuperiorSCAN();
-        SolicitudES elegida;
-        if (estrategiaActiva != null) {
-            elegida = estrategiaActiva.seleccionar(colaES, posicionCabezal, direccionAscendente, limiteSuperior + 1);
-        } else {
-            elegida = colaES.eliminarPrimero();
-        }
+        SolicitudES elegida = planificador.seleccionarSiguiente(
+                posicionCabezal, direccionAscendente, limiteSuperior + 1);
         if (elegida == null) {
             return;
         }
@@ -563,7 +570,7 @@ public class DiscoSimulado implements ComponenteReloj {
         if (solicitudActual != null && solicitudActual.getBloqueDestino() > limite) {
             limite = bloques.length - 1;
         }
-        Iterador<SolicitudES> it = colaES.iterador();
+        Iterador<SolicitudES> it = planificador.iteradorCola();
         while (it.haySiguiente()) {
             SolicitudES s = it.siguiente();
             if (s != null && s.getBloqueDestino() > limite) {
@@ -670,7 +677,7 @@ public class DiscoSimulado implements ComponenteReloj {
     public int getCantidadEnColaES() {
         mutex.acquireUninterruptibly();
         try {
-            return colaES.getTamano();
+            return planificador.getCantidadPendientes();
         } finally {
             mutex.release();
         }
@@ -680,17 +687,12 @@ public class DiscoSimulado implements ComponenteReloj {
      * Devuelve un iterador seguro sobre una copia instantánea de la cola de E/S pendiente.
      */
     public Iterador<SolicitudES> iteradorColaES() {
-        ListaEnlazada<SolicitudES> copia = new ListaEnlazada<>();
         mutex.acquireUninterruptibly();
         try {
-            Iterador<SolicitudES> it = colaES.iterador();
-            while (it.haySiguiente()) {
-                copia.agregar(it.siguiente());
-            }
+            return planificador.iteradorCola();
         } finally {
             mutex.release();
         }
-        return copia.iterador();
     }
 
     /**
@@ -712,7 +714,7 @@ public class DiscoSimulado implements ComponenteReloj {
     public boolean hayTrabajoPendiente() {
         mutex.acquireUninterruptibly();
         try {
-            return solicitudActual != null || !colaES.estaVacia();
+            return solicitudActual != null || !planificador.estaVacia();
         } finally {
             mutex.release();
         }
