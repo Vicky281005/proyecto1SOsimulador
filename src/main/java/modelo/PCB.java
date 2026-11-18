@@ -1,6 +1,7 @@
 package modelo;
 
 import enums.EstadoProceso;
+import enums.ModoUsuario;
 import enums.MotivoBloqueo;
 import enums.TipoOperacionES;
 import enums.TipoProceso;
@@ -69,6 +70,11 @@ public class PCB {
     private TipoOperacionES operacion;       // null si es un proceso normal
     private String rutaObjetivo = "";        // ruta del archivo o directorio (targetPath)
     private int tamanoArchivoBloques;        // bloques a asignar en un CREAR
+    private String nuevoNombre = "";         // nuevo nombre en un ACTUALIZAR (renombrar)
+    private ModoUsuario modoSolicitante = ModoUsuario.ADMINISTRADOR;
+    private String usuario = "admin";        // dueño/solicitante de la operación
+    private boolean esperandoDisco;          // bloqueado esperando que el disco termine
+    private String rechazoES = "";           // motivo si el sistema de archivos rechazó la operación
 
     // Proyecto 2: swap (proceso suspendido)
     private int primerBloqueSwap = SIN_ASIGNAR;
@@ -268,6 +274,7 @@ public class PCB {
             this.bufferBloqueadoId = "";
             this.ciclosBloqueoRestantes = 0;
             this.bloqueoIOPendiente = false;
+            this.esperandoDisco = false;
             limpiarOperacionRemotaPendiente();
         }
     }
@@ -296,6 +303,28 @@ public class PCB {
         this.bloquesSwap = 0;
     }
     public boolean esProcesoES() { return operacion != null; }
+
+    public String getNuevoNombre() { return nuevoNombre; }
+    public void setNuevoNombre(String nuevoNombre) {
+        this.nuevoNombre = nuevoNombre == null ? "" : nuevoNombre;
+    }
+
+    public ModoUsuario getModoSolicitante() { return modoSolicitante; }
+    public void setModoSolicitante(ModoUsuario modoSolicitante) {
+        this.modoSolicitante = modoSolicitante == null ? ModoUsuario.ADMINISTRADOR : modoSolicitante;
+    }
+
+    public String getUsuario() { return usuario; }
+    public void setUsuario(String usuario) {
+        this.usuario = (usuario == null || usuario.isBlank()) ? "admin" : usuario;
+    }
+
+    public boolean isEsperandoDisco() { return esperandoDisco; }
+    public void setEsperandoDisco(boolean esperandoDisco) { this.esperandoDisco = esperandoDisco; }
+
+    public String getRechazoES() { return rechazoES; }
+    public void setRechazoES(String rechazoES) { this.rechazoES = rechazoES == null ? "" : rechazoES; }
+    public boolean fueRechazadoES() { return !rechazoES.isEmpty(); }
     
     public MotivoBloqueo getMotivoBloqueo() { return motivoBloqueo; }
     public void setMotivoBloqueo(MotivoBloqueo motivoBloqueo) { this.motivoBloqueo = motivoBloqueo; }
@@ -381,6 +410,7 @@ public class PCB {
         this.motivoBloqueo = MotivoBloqueo.NINGUNO;
         this.ciclosBloqueoRestantes = 0;
         this.bloqueoIOPendiente = false;
+        this.esperandoDisco = false;
     }
 
     public boolean isBloqueoIOPendiente() {
