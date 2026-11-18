@@ -58,6 +58,8 @@ public class VentanaEstado extends JFrame {
     private VentanaGrafica ventanaGrafica;
     private final JButton btnMetricas = new JButton("Métricas");
     private VentanaMetricas ventanaMetricas;
+    private final JButton btnDisco = new JButton("Disco");
+    private VentanaDisco ventanaDisco;
     private final JButton btnConfiguracion = new JButton("Configuración…");
     private final JSlider deslizador;
     private final javax.swing.JTextArea areaLog = new javax.swing.JTextArea(6, 80);
@@ -110,6 +112,7 @@ public class VentanaEstado extends JFrame {
         fila1.add(btnCrear);
         fila1.add(btnGrafica);
         fila1.add(btnMetricas);
+        fila1.add(btnDisco);
         fila1.add(btnConfiguracion);
 
         // Fila 2: Indicadores de estado y control de velocidad/duración
@@ -131,6 +134,7 @@ public class VentanaEstado extends JFrame {
         btnCrear.addActionListener(e -> abrirCrearProceso());
         btnGrafica.addActionListener(e -> abrirGrafica());
         btnMetricas.addActionListener(e -> abrirMetricas());
+        btnDisco.addActionListener(e -> abrirDisco());
         btnConfiguracion.addActionListener(e -> abrirConfiguracion());
 
         areaLog.setEditable(false);
@@ -197,6 +201,15 @@ public class VentanaEstado extends JFrame {
         ventanaMetricas.toFront();
     }
 
+    /** Abre (o trae al frente) la vista del disco y su planificación de E/S. */
+    private void abrirDisco() {
+        if (ventanaDisco == null) {
+            ventanaDisco = new VentanaDisco(this, simulador);
+        }
+        ventanaDisco.setVisible(true);
+        ventanaDisco.toFront();
+    }
+
     /** Abre la ventana de configuración y persistencia. */
     private void abrirConfiguracion() {
         VentanaConfiguracion vc = new VentanaConfiguracion(this, simulador);
@@ -244,6 +257,10 @@ public class VentanaEstado extends JFrame {
     }
 
     private void cerrarVentanasHijas() {
+        if (ventanaDisco != null) {
+            ventanaDisco.dispose();
+            ventanaDisco = null;
+        }
         if (ventanaGrafica != null) {
             ventanaGrafica.dispose();
             ventanaGrafica = null;

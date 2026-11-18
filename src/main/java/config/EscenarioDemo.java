@@ -1,5 +1,6 @@
 package config;
 
+import disco.DiscoSimulado;
 import enums.PoliticaPlanificacion;
 import enums.TipoInstruccion;
 import enums.TipoProceso;
@@ -42,6 +43,10 @@ public final class EscenarioDemo {
         simulador.registrarComputador(pc1);
         simulador.registrarComputador(pc2);
         simulador.registrarComputador(pc3);
+
+        // Disco de demostración (200 bloques, 20 de swap) para la vista del disco.
+        simulador.setDisco(new DiscoSimulado("Disco-SD", DiscoSimulado.TOTAL_BLOQUES_POR_DEFECTO,
+                DiscoSimulado.POSICION_CABEZAL_POR_DEFECTO, 20));
 
         // Memoria grande por proceso para visualizar la cola de nuevos.
         simulador.cargarProceso(proceso("P1", 1, 12, 500, 60, pc1.getId()));
