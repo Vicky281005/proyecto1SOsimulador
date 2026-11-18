@@ -353,7 +353,7 @@ public class Computador implements ComponenteReloj {
                 primerBloque, cantidad, cicloActual, true));
         simulacion.LogEventos log = (simulador != null) ? simulador.getLogEventos() : null;
         if (log != null) {
-            log.registrar(simulacion.LogEventos.TipoEvento.OTRO,
+            log.registrar(simulacion.LogEventos.TipoEvento.SUSPENSION,
                     "Suspensión: " + victima.getNombre() + " (prioridad " + victima.getPrioridad()
                             + ", " + victima.getTiempoBloqueadoAcumulado() + " ciclos bloqueado) se escribe en swap (bloques "
                             + primerBloque + "-" + (primerBloque + cantidad - 1) + ") para admitir a "
@@ -423,7 +423,7 @@ public class Computador implements ComponenteReloj {
                 elegido.getPrimerBloqueSwap(), elegido.getBloquesSwap(), cicloActual, true));
         simulacion.LogEventos log = (simulador != null) ? simulador.getLogEventos() : null;
         if (log != null) {
-            log.registrar(simulacion.LogEventos.TipoEvento.OTRO,
+            log.registrar(simulacion.LogEventos.TipoEvento.REACTIVACION,
                     "Reactivación: se lee " + elegido.getNombre() + " desde el swap (bloque "
                             + elegido.getPrimerBloqueSwap() + ") porque hay RAM libre");
         }
@@ -435,7 +435,7 @@ public class Computador implements ComponenteReloj {
         simulacion.LogEventos log = (simulador != null) ? simulador.getLogEventos() : null;
         if (sol.getOperacion() == TipoOperacionES.SUSPENDER) {
             if (log != null && p != null) {
-                log.registrar(simulacion.LogEventos.TipoEvento.OTRO,
+                log.registrar(simulacion.LogEventos.TipoEvento.SUSPENSION,
                         "Suspensión completada: " + p.getNombre() + " ya está escrito en el swap");
             }
             return;
@@ -454,7 +454,7 @@ public class Computador implements ComponenteReloj {
         p.setEstado(EstadoProceso.LISTO);
         planificador.encolarListo(p);
         if (log != null) {
-            log.registrar(simulacion.LogEventos.TipoEvento.OTRO,
+            log.registrar(simulacion.LogEventos.TipoEvento.REACTIVACION,
                     "Reactivación completada: " + p.getNombre() + " vuelve a Listo y libera su swap");
         }
     }
@@ -535,7 +535,7 @@ public class Computador implements ComponenteReloj {
             proceso.setBloqueoIOPendiente(true);
             disco.encolarSolicitud(solicitud);
             if (log != null) {
-                log.registrar(simulacion.LogEventos.TipoEvento.OTRO,
+                log.registrar(simulacion.LogEventos.TipoEvento.DISCO,
                         "Solicitud de E/S encolada en el disco: " + solicitud + " (modo kernel, "
                                 + proceso.getNombre() + ")");
             }
@@ -548,7 +548,7 @@ public class Computador implements ComponenteReloj {
     private void rechazarES(PCB proceso, String motivo, simulacion.LogEventos log) {
         proceso.setRechazoES(motivo);
         if (log != null) {
-            log.registrar(simulacion.LogEventos.TipoEvento.OTRO,
+            log.registrar(simulacion.LogEventos.TipoEvento.RECHAZO_ES,
                     "Operación RECHAZADA de " + proceso.getNombre() + " (" + proceso.getModoSolicitante()
                             + ", " + proceso.getUsuario() + "): " + motivo);
         }
