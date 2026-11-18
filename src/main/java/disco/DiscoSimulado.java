@@ -206,15 +206,26 @@ public class DiscoSimulado implements ComponenteReloj {
         if (politica == null) {
             return;
         }
+        PoliticaDisco anterior;
+        int pendientes;
+        LogEventos logCambio;
         mutex.acquireUninterruptibly();
         try {
+            anterior = this.politicaActual;
             this.planificador.setPolitica(politica);
             this.politicaActual = politica;
             if (politica != PoliticaDisco.SCAN && politica != PoliticaDisco.C_SCAN) {
                 this.metaExtremoPendiente = -1;
             }
+            pendientes = planificador.getCantidadPendientes();
+            logCambio = this.logEventos;
         } finally {
             mutex.release();
+        }
+        if (logCambio != null && anterior != politica) {
+            logCambio.registrar(LogEventos.TipoEvento.CAMBIO_POLITICA,
+                    "Política de disco: " + anterior.getCodigoJson() + " -> " + politica.getCodigoJson()
+                            + " (en caliente, " + pendientes + " solicitudes en cola)");
         }
     }
 
@@ -467,11 +478,23 @@ public class DiscoSimulado implements ComponenteReloj {
         PoliticaDisco politicaUsada = null;
         EscuchaFinES escucha = null;
         LogEventos log = null;
+        String eleccion = null;
+        LogEventos logEleccion = null;
 
         mutex.acquireUninterruptibly();
         try {
             if (solicitudActual == null && !planificador.estaVacia()) {
+                int pendientesAntes = planificador.getCantidadPendientes();
+                int cabezalAntes = posicionCabezal;
                 seleccionarSiguienteLocked(cicloActual);
+                if (solicitudActual != null) {
+                    eleccion = "Disco (" + politicaActual.getCodigoJson() + ") elige " + solicitudActual
+                            + " con el cabezal en el bloque " + cabezalAntes
+                            + (direccionAscendente ? " (ascendente)" : " (descendente)")
+                            + ", distancia " + Math.abs(solicitudActual.getBloqueDestino() - cabezalAntes)
+                            + ", " + (pendientesAntes - 1) + " solicitudes quedan en espera";
+                    logEleccion = this.logEventos;
+                }
             }
 
             if (solicitudActual != null) {
@@ -515,6 +538,10 @@ public class DiscoSimulado implements ComponenteReloj {
             mutex.release();
         }
 
+        if (eleccion != null && logEleccion != null) {
+            logEleccion.registrar(LogEventos.TipoEvento.DISCO, eleccion);
+        }
+
         if (completada != null) {
             String detalle = "El disco atendió " + completada.getOperacion().getCodigoJson()
                     + " de " + completada.getNombreProceso()
@@ -522,7 +549,7 @@ public class DiscoSimulado implements ComponenteReloj {
                     + " (" + politicaUsada.getCodigoJson() + ")";
             if (log != null) {
                 // Cuando LogEventos incorpore el tipo específico de disco, reemplazar OTRO
-                log.registrar(LogEventos.TipoEvento.OTRO, detalle);
+                log.registrar(LogEventos.TipoEvento.DISCO, detalle);
             }
             if (escucha != null) {
                 escucha.alTerminarSolicitud(completada, true, detalle);

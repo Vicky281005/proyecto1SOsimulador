@@ -20,6 +20,10 @@ public class LogEventos {
         DESALOJO,
         BUFFER,
         CREACION,
+        DISCO,
+        SUSPENSION,
+        REACTIVACION,
+        RECHAZO_ES,
         OTRO
     }
 
