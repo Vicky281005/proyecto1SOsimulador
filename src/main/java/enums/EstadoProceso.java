@@ -1,18 +1,18 @@
 package enums;
 
 /**
- * Modelo de estados de un proceso 
- *
- * Para los procesos bloqueados se decidió mantener un único estado BLOQUEADO
- * y distinguir la causa con el enum {@link MotivoBloqueo}. Esto evita multiplicar
- * los estados del diagrama y permite mostrar en la GUI el motivo concreto
- * (semáforo lleno, semáforo vacío, mutex, latencia de red o espera de E/S).
+ * Modelo de siete estados de un proceso.
+ * Los estados suspendidos indican que el proceso fue sacado de la RAM
+ * y su imagen está en el área de intercambio (swap) del disco.
+ * La causa de un bloqueo se distingue con {@link MotivoBloqueo}.
  */
 public enum EstadoProceso {
     NUEVO("Nuevo"),
     LISTO("Listo"),
     EJECUCION("Ejecución"),
     BLOQUEADO("Bloqueado"),
+    LISTO_SUSPENDIDO("Listo/Suspendido"),
+    BLOQUEADO_SUSPENDIDO("Bloqueado/Suspendido"),
     TERMINADO("Terminado");
 
     private final String etiqueta;
@@ -25,12 +25,13 @@ public enum EstadoProceso {
         return etiqueta;
     }
 
+    /** Indica si el proceso está fuera de la RAM (en swap). */
+    public boolean estaSuspendido() {
+        return this == LISTO_SUSPENDIDO || this == BLOQUEADO_SUSPENDIDO;
+    }
+
     @Override
     public String toString() {
         return etiqueta;
     }
 }
-
-
-
-

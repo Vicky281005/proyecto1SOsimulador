@@ -2,6 +2,7 @@ package modelo;
 
 import enums.EstadoProceso;
 import enums.MotivoBloqueo;
+import enums.TipoOperacionES;
 import enums.TipoProceso;
 import estructuras.ListaEnlazada;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -63,6 +64,15 @@ public class PCB {
     private int elementosProducidos;
     private int elementosConsumidos;
     private boolean bloqueoIOPendiente;
+
+    // Proyecto 2: operación de E/S sobre el sistema de archivos
+    private TipoOperacionES operacion;       // null si es un proceso normal
+    private String rutaObjetivo = "";        // ruta del archivo o directorio (targetPath)
+    private int tamanoArchivoBloques;        // bloques a asignar en un CREAR
+
+    // Proyecto 2: swap (proceso suspendido)
+    private int primerBloqueSwap = SIN_ASIGNAR;
+    private int bloquesSwap;
 
     public PCB(String nombre, int computadorAsignado, TipoProceso tipo, int prioridad, 
                long memoriaAsignada, long deadlineRelativo, 
@@ -249,9 +259,11 @@ public class PCB {
     public int getComputadorAsignado() { return computadorAsignado; }
     
     public EstadoProceso getEstado() { return estado; }
-    public void setEstado(EstadoProceso estado) { 
-        this.estado = estado; 
-        if (estado != EstadoProceso.BLOQUEADO) {
+    public void setEstado(EstadoProceso estado) {
+        this.estado = estado;
+        // Un proceso suspendido sigue esperando su evento, así que
+        // el motivo de bloqueo solo se limpia fuera de los estados bloqueados.
+        if (estado != EstadoProceso.BLOQUEADO && estado != EstadoProceso.BLOQUEADO_SUSPENDIDO) {
             this.motivoBloqueo = MotivoBloqueo.NINGUNO;
             this.bufferBloqueadoId = "";
             this.ciclosBloqueoRestantes = 0;
@@ -259,6 +271,31 @@ public class PCB {
             limpiarOperacionRemotaPendiente();
         }
     }
+
+    public TipoOperacionES getOperacion() { return operacion; }
+    public void setOperacion(TipoOperacionES operacion) { this.operacion = operacion; }
+
+    public String getRutaObjetivo() { return rutaObjetivo; }
+    public void setRutaObjetivo(String rutaObjetivo) {
+        this.rutaObjetivo = rutaObjetivo == null ? "" : rutaObjetivo;
+    }
+
+    public int getTamanoArchivoBloques() { return tamanoArchivoBloques; }
+    public void setTamanoArchivoBloques(int tamanoArchivoBloques) {
+        this.tamanoArchivoBloques = Math.max(0, tamanoArchivoBloques);
+    }
+
+    public int getPrimerBloqueSwap() { return primerBloqueSwap; }
+    public int getBloquesSwap() { return bloquesSwap; }
+    public void asignarSwap(int primerBloque, int cantidad) {
+        this.primerBloqueSwap = primerBloque;
+        this.bloquesSwap = cantidad;
+    }
+    public void liberarSwap() {
+        this.primerBloqueSwap = SIN_ASIGNAR;
+        this.bloquesSwap = 0;
+    }
+    public boolean esProcesoES() { return operacion != null; }
     
     public MotivoBloqueo getMotivoBloqueo() { return motivoBloqueo; }
     public void setMotivoBloqueo(MotivoBloqueo motivoBloqueo) { this.motivoBloqueo = motivoBloqueo; }
