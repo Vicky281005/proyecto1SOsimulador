@@ -39,6 +39,10 @@ public class Computador implements ComponenteReloj {
     private final ListaEnlazada<PCB> bloqueados;
     private final ListaEnlazada<PCB> terminados;
 
+    // Modelo de 7 estados: procesos cuya imagen está en el área de swap del disco
+    private final ListaEnlazada<PCB> listosSuspendidos;
+    private final ListaEnlazada<PCB> bloqueadosSuspendidos;
+
     private final long memoriaTotal;
     private long memoriaDisponible;
 
@@ -60,6 +64,8 @@ public class Computador implements ComponenteReloj {
         this.nuevos = new ListaEnlazada<>();
         this.bloqueados = new ListaEnlazada<>();
         this.terminados = new ListaEnlazada<>();
+        this.listosSuspendidos = new ListaEnlazada<>();
+        this.bloqueadosSuspendidos = new ListaEnlazada<>();
         this.memoriaTotal = memoriaTotal;
         this.memoriaDisponible = memoriaTotal;
     }
@@ -86,7 +92,7 @@ public class Computador implements ComponenteReloj {
         if (log != null && !proceso.isCreacionRegistradaEnLog()) {
             proceso.setCreacionRegistradaEnLog(true);
             log.registrar(simulacion.LogEventos.TipoEvento.CREACION,
-                    "Creado proceso " + proceso.getNombre() + " (" + proceso.getId() + ") en estado NUEVO (RAM requerida: " + proceso.getMemoriaAsignada() + " KB)");
+                    "Creado proceso " + proceso.getNombre() + " (" + proceso.getId() + ") en estado NUEVO (RAM requerida: " + proceso.getMemoriaAsignada() + " bloques)");
         }
     }
 
@@ -995,6 +1001,14 @@ public class Computador implements ComponenteReloj {
         return terminados.getTamano();
     }
 
+    public int getCantidadListosSuspendidos() {
+        return listosSuspendidos.getTamano();
+    }
+
+    public int getCantidadBloqueadosSuspendidos() {
+        return bloqueadosSuspendidos.getTamano();
+    }
+
     private final ListaEnlazada<Buffer> buffers = new ListaEnlazada<>();
     private Simulador simulador;
 
@@ -1007,7 +1021,7 @@ public class Computador implements ComponenteReloj {
                 if (!p.isCreacionRegistradaEnLog()) {
                     p.setCreacionRegistradaEnLog(true);
                     simulador.getLogEventos().registrar(simulacion.LogEventos.TipoEvento.CREACION,
-                            "Creado proceso " + p.getNombre() + " (" + p.getId() + ") en estado NUEVO (RAM requerida: " + p.getMemoriaAsignada() + " KB)");
+                            "Creado proceso " + p.getNombre() + " (" + p.getId() + ") en estado NUEVO (RAM requerida: " + p.getMemoriaAsignada() + " bloques)");
                 }
             }
         }
@@ -1045,5 +1059,13 @@ public class Computador implements ComponenteReloj {
 
     public Iterador<PCB> iteradorTerminados() {
         return terminados.iterador();
+    }
+
+    public Iterador<PCB> iteradorListosSuspendidos() {
+        return listosSuspendidos.iterador();
+    }
+
+    public Iterador<PCB> iteradorBloqueadosSuspendidos() {
+        return bloqueadosSuspendidos.iterador();
     }
 }
