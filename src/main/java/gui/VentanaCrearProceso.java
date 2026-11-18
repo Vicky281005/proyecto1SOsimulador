@@ -74,7 +74,7 @@ public class VentanaCrearProceso extends JDialog {
             public Component getListCellRendererComponent(JList<?> lista, Object valor, int i,
                                                           boolean sel, boolean foco) {
                 Object texto = valor instanceof Computador c
-                        ? c.getNombre() + "  (RAM " + c.getMemoriaTotal() + " KB)" : valor;
+                        ? c.getNombre() + "  (RAM " + c.getMemoriaTotal() + " bloques)" : valor;
                 return super.getListCellRendererComponent(lista, texto, i, sel, foco);
             }
         });
@@ -126,7 +126,7 @@ public class VentanaCrearProceso extends JDialog {
         fila(form, g, 0, "Nombre:", txtNombre);
         fila(form, g, 1, "Tipo:", comboTipo);
         fila(form, g, 2, "Instrucciones:", txtInstrucciones);
-        fila(form, g, 3, "Memoria (KB):", txtMemoria);
+        fila(form, g, 3, "Memoria (bloques):", txtMemoria);
         fila(form, g, 4, "Prioridad (1 = más alta):", txtPrioridad);
         fila(form, g, 5, "Deadline (ciclos):", txtDeadline);
         fila(form, g, 6, "Computador destino:", comboComputador);

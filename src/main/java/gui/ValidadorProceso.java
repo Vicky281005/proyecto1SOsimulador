@@ -98,12 +98,12 @@ public final class ValidadorProceso {
         // Memoria: no puede superar la RAM total del computador, o el proceso nunca sería admitido.
         Long kb = entero(memoria);
         if (kb == null) {
-            errores[CAMPO_MEMORIA] = mensajeNoEntero("La memoria (KB)");
+            errores[CAMPO_MEMORIA] = mensajeNoEntero("La memoria (bloques)");
         } else if (kb < 1) {
-            errores[CAMPO_MEMORIA] = "La memoria debe ser de al menos 1 KB.";
+            errores[CAMPO_MEMORIA] = "La memoria debe ser de al menos 1 bloque.";
         } else if (destino != null && kb > destino.getMemoriaTotal()) {
-            errores[CAMPO_MEMORIA] = "La memoria (" + kb + " KB) supera la RAM total de "
-                    + destino.getNombre() + " (" + destino.getMemoriaTotal() + " KB).";
+            errores[CAMPO_MEMORIA] = "La memoria (" + kb + " bloques) supera la RAM total de "
+                    + destino.getNombre() + " (" + destino.getMemoriaTotal() + " bloques).";
         }
 
         // Prioridad
