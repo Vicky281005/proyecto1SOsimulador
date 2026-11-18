@@ -110,7 +110,8 @@ public class CPU implements ComponenteReloj {
                 || tipo == TipoInstruccion.PRODUCIR
                 || tipo == TipoInstruccion.CONSUMIR
                 || tipo == TipoInstruccion.READ_IO
-                || tipo == TipoInstruccion.WRITE_IO;
+                || tipo == TipoInstruccion.WRITE_IO
+                || tipo == TipoInstruccion.OPERACION_ES;
     }
 
     /**
