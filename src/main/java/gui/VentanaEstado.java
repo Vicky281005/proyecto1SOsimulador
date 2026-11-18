@@ -21,7 +21,6 @@ import javax.swing.Timer;
 import nucleo.Computador;
 import simulacion.LogEventos;
 import simulacion.Simulador;
-import sincronizacion.Buffer;
 
 /**
  * Vista 2 de ÁvilaOS: ventana de monitoreo de la simulación.
@@ -55,7 +54,6 @@ public class VentanaEstado extends JFrame {
     private final JButton btnReiniciar = new JButton("Reiniciar");
     private final JButton btnCrear = new JButton("Crear proceso…");
     private VentanaCrearProceso ventanaCrear;
-    private final JButton btnCrearBuffer = new JButton("Crear buffer");
     private final JButton btnGrafica = new JButton("Gráfica CPU");
     private VentanaGrafica ventanaGrafica;
     private final JButton btnMetricas = new JButton("Métricas");
@@ -77,7 +75,7 @@ public class VentanaEstado extends JFrame {
         // En la interfaz gráfica se mantiene el reloj activo en ocioso para que no se congele
         this.simulador.setMantenerRelojActivo(true);
 
-        // Un panel por computador.
+        // Un panel por computador (en el Proyecto 2 se usa una sola instancia).
         paneles = new PanelComputador[simulador.getCantidadComputadores()];
         JPanel centro = new JPanel(new GridLayout(1, Math.max(1, paneles.length), 8, 8));
         Iterador<Computador> it = simulador.iteradorComputadores();
@@ -110,7 +108,6 @@ public class VentanaEstado extends JFrame {
         fila1.add(btnReiniciar);
         fila1.add(new javax.swing.JSeparator(javax.swing.SwingConstants.VERTICAL));
         fila1.add(btnCrear);
-        fila1.add(btnCrearBuffer);
         fila1.add(btnGrafica);
         fila1.add(btnMetricas);
         fila1.add(btnConfiguracion);
@@ -132,7 +129,6 @@ public class VentanaEstado extends JFrame {
         btnDetener.addActionListener(e -> detener());
         btnReiniciar.addActionListener(e -> reiniciar());
         btnCrear.addActionListener(e -> abrirCrearProceso());
-        btnCrearBuffer.addActionListener(e -> crearBuffer());
         btnGrafica.addActionListener(e -> abrirGrafica());
         btnMetricas.addActionListener(e -> abrirMetricas());
         btnConfiguracion.addActionListener(e -> abrirConfiguracion());
@@ -205,93 +201,6 @@ public class VentanaEstado extends JFrame {
     private void abrirConfiguracion() {
         VentanaConfiguracion vc = new VentanaConfiguracion(this, simulador);
         vc.setVisible(true);
-    }
-
-    private void crearBuffer() {
-        JPanel panel = new JPanel(new java.awt.GridLayout(0, 2, 4, 4));
-        JComboBox<Computador> comboComp = new JComboBox<>();
-        Iterador<Computador> it = simulador.iteradorComputadores();
-        while (it.haySiguiente()) {
-            comboComp.addItem(it.siguiente());
-        }
-        comboComp.setRenderer(new javax.swing.DefaultListCellRenderer() {
-            @Override
-            public java.awt.Component getListCellRendererComponent(javax.swing.JList<?> lista, Object valor, int i,
-                                                                  boolean sel, boolean foco) {
-                Object texto = valor instanceof Computador c
-                        ? c.getNombre() + " (RAM " + c.getMemoriaTotal() + " KB)" : valor;
-                return super.getListCellRendererComponent(lista, texto, i, sel, foco);
-            }
-        });
-
-        int nBuf = 1;
-        while (simulador.buscarBuffer("B" + nBuf) != null || simulador.buscarBuffer("BUF-" + nBuf) != null) {
-            nBuf++;
-        }
-        JTextField txtId = new JTextField("B" + nBuf);
-        JTextField txtCap = new JTextField("5");
-        JTextField txtTam = new JTextField("4");
-        panel.add(new JLabel("ID del buffer:"));
-        panel.add(txtId);
-        panel.add(new JLabel("Capacidad:"));
-        panel.add(txtCap);
-        panel.add(new JLabel("Tamaño elemento (KB):"));
-        panel.add(txtTam);
-        panel.add(new JLabel("Computador anfitrión:"));
-        panel.add(comboComp);
-        int res = JOptionPane.showConfirmDialog(this, panel, "Crear buffer acotado", JOptionPane.OK_CANCEL_OPTION);
-        if (res != JOptionPane.OK_OPTION) {
-            return;
-        }
-        try {
-            String id = txtId.getText().trim();
-            if (id.isEmpty()) {
-                JOptionPane.showMessageDialog(this, "Debe ingresar un ID para el buffer.", "Error", JOptionPane.ERROR_MESSAGE);
-                return;
-            }
-            if (simulador.buscarBuffer(id) != null) {
-                JOptionPane.showMessageDialog(this, "Ya existe un buffer con el ID " + id + ".", "Error", JOptionPane.ERROR_MESSAGE);
-                return;
-            }
-            String capStr = txtCap.getText().trim();
-            String tamStr = txtTam.getText().trim();
-            int cap;
-            long tam;
-            try {
-                cap = Integer.parseInt(capStr);
-            } catch (NumberFormatException ex) {
-                JOptionPane.showMessageDialog(this, "La capacidad debe ser un valor numérico entero.", "Error", JOptionPane.ERROR_MESSAGE);
-                return;
-            }
-            try {
-                tam = Long.parseLong(tamStr);
-            } catch (NumberFormatException ex) {
-                JOptionPane.showMessageDialog(this, "El tamaño del elemento debe ser un valor numérico.", "Error", JOptionPane.ERROR_MESSAGE);
-                return;
-            }
-            if (cap <= 0) {
-                JOptionPane.showMessageDialog(this, "La capacidad debe ser mayor que cero.", "Error", JOptionPane.ERROR_MESSAGE);
-                return;
-            }
-            if (tam <= 0) {
-                JOptionPane.showMessageDialog(this, "El tamaño del elemento debe ser mayor que cero.", "Error", JOptionPane.ERROR_MESSAGE);
-                return;
-            }
-            Computador anfitrion = (Computador) comboComp.getSelectedItem();
-            if (anfitrion == null) {
-                JOptionPane.showMessageDialog(this, "Debe seleccionar un computador anfitrión.", "Error", JOptionPane.ERROR_MESSAGE);
-                return;
-            }
-            Buffer b = new Buffer(id, cap, anfitrion.getId(), tam, anfitrion);
-            simulador.registrarBuffer(b);
-            JOptionPane.showMessageDialog(this, "Buffer " + id + " creado correctamente en " + anfitrion.getNombre(), "OK", JOptionPane.INFORMATION_MESSAGE);
-            if (ventanaCrear != null) {
-                ventanaCrear.actualizarBuffers();
-            }
-            refrescar();
-        } catch (Exception ex) {
-            JOptionPane.showMessageDialog(this, "Error al crear buffer: " + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
-        }
     }
 
     private void pausarOReanudar() {
@@ -389,7 +298,6 @@ public class VentanaEstado extends JFrame {
             btnDetener.setEnabled(iniciada && !detenida);
             btnReiniciar.setEnabled(true);
             btnCrear.setEnabled(!detenida && !simulador.isLimiteAlcanzado());
-            btnCrearBuffer.setEnabled(!detenida && !simulador.isLimiteAlcanzado());
 
             if (logSb.length() > 0) {
                 String nuevoTexto = logSb.toString();
