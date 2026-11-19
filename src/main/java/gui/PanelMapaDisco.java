@@ -106,24 +106,36 @@ public class PanelMapaDisco extends JPanel {
         return COLOR_ARCHIVO_DEFECTO;
     }
 
+    private int celdaActual() {
+        int w = getWidth();
+        int h = getHeight();
+        if (w <= 640 || bloques.length == 0) {
+            return CELDA;
+        }
+        int porAncho = (w - 2) / COLUMNAS;
+        int porAlto = (h - 2) / filas();
+        return Math.max(CELDA, Math.min(porAncho, porAlto));
+    }
+
     @Override
     protected void paintComponent(Graphics g) {
         super.paintComponent(g);
+        int celda = celdaActual();
         Graphics2D g2 = (Graphics2D) g.create();
         g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-        g2.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 9));
+        g2.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, Math.max(9, celda / 3)));
         for (int n = 0; n < bloques.length; n++) {
-            int x = (n % COLUMNAS) * CELDA;
-            int y = (n / COLUMNAS) * CELDA;
+            int x = (n % COLUMNAS) * celda;
+            int y = (n / COLUMNAS) * celda;
             g2.setColor(colorDe(bloques[n]));
-            g2.fillRect(x + 1, y + 1, CELDA - 2, CELDA - 2);
+            g2.fillRect(x + 1, y + 1, celda - 2, celda - 2);
             g2.setColor(new Color(0, 0, 0, 70));
-            g2.drawRect(x + 1, y + 1, CELDA - 3, CELDA - 3);
+            g2.drawRect(x + 1, y + 1, celda - 3, celda - 3);
             g2.setColor(bloques[n].isOcupado() ? Color.WHITE : Color.DARK_GRAY);
-            g2.drawString(String.valueOf(n), x + 4, y + CELDA - 5);
+            g2.drawString(String.valueOf(n), x + 4, y + celda - 5);
             if (enEspera[n]) {
                 g2.setColor(Color.BLACK);
-                g2.fillOval(x + CELDA - 10, y + 4, 6, 6);
+                g2.fillOval(x + celda - 10, y + 4, 6, 6);
             }
         }
         if (destinoActual >= 0) {
@@ -132,22 +144,23 @@ public class PanelMapaDisco extends JPanel {
             for (int k = 0; k < Math.max(1, cantidadActual); k++) {
                 int n = destinoActual + k;
                 if (n < bloques.length) {
-                    g2.drawRect((n % COLUMNAS) * CELDA + 2, (n / COLUMNAS) * CELDA + 2, CELDA - 4, CELDA - 4);
+                    g2.drawRect((n % COLUMNAS) * celda + 2, (n / COLUMNAS) * celda + 2, celda - 4, celda - 4);
                 }
             }
         }
         if (cabezal >= 0 && cabezal < bloques.length) {
             g2.setColor(COLOR_CABEZAL);
             g2.setStroke(new BasicStroke(4f));
-            g2.drawRect((cabezal % COLUMNAS) * CELDA + 2, (cabezal / COLUMNAS) * CELDA + 2, CELDA - 4, CELDA - 4);
+            g2.drawRect((cabezal % COLUMNAS) * celda + 2, (cabezal / COLUMNAS) * celda + 2, celda - 4, celda - 4);
         }
         g2.dispose();
     }
 
     @Override
     public String getToolTipText(MouseEvent e) {
-        int col = e.getX() / CELDA;
-        int fila = e.getY() / CELDA;
+        int celda = celdaActual();
+        int col = e.getX() / celda;
+        int fila = e.getY() / celda;
         int n = fila * COLUMNAS + col;
         if (col >= COLUMNAS || n < 0 || n >= bloques.length) {
             return null;

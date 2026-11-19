@@ -111,6 +111,11 @@ public class Simulador implements EscuchaFinES {
     private volatile boolean mantenerRelojActivo = false;
     private volatile boolean notificadoFinOcioso = false;
 
+    // Proyecto 2: control de carga obligatoria de los 2 archivos JSON
+    private volatile boolean requiereCargaJsonObligatoria = false;
+    private volatile boolean sistemaArchivosJsonCargado = false;
+    private volatile boolean procesosJsonCargados = false;
+
     public boolean isMantenerRelojActivo() {
         return mantenerRelojActivo;
     }
@@ -260,6 +265,35 @@ public class Simulador implements EscuchaFinES {
         } finally {
             mutexEstado.release();
         }
+    }
+
+    public ServicioArchivos getServicioArchivos() {
+        return servicioArchivos;
+    }
+
+    public void marcarJsonCargados(boolean fsCargado, boolean procCargado) {
+        this.sistemaArchivosJsonCargado = fsCargado;
+        this.procesosJsonCargados = procCargado;
+    }
+
+    public boolean isSistemaArchivosJsonCargado() {
+        return sistemaArchivosJsonCargado;
+    }
+
+    public boolean isProcesosJsonCargados() {
+        return procesosJsonCargados;
+    }
+
+    public boolean tieneAmbosJsonCargados() {
+        return sistemaArchivosJsonCargado && procesosJsonCargados;
+    }
+
+    public boolean isRequiereCargaJsonObligatoria() {
+        return requiereCargaJsonObligatoria;
+    }
+
+    public void setRequiereCargaJsonObligatoria(boolean requiere) {
+        this.requiereCargaJsonObligatoria = requiere;
     }
 
     /**
