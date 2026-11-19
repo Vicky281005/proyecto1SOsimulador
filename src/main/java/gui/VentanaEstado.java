@@ -60,7 +60,7 @@ public class VentanaEstado extends JFrame {
     private VentanaMetricas ventanaMetricas;
     private final JButton btnDisco = new JButton("Disco");
     private VentanaDisco ventanaDisco;
-    private final JButton btnConfiguracion = new JButton("Configuración…");
+    private final JButton btnConfiguracion = new JButton("Cargar JSON / Config…");
     private final JSlider deslizador;
     private final javax.swing.JTextArea areaLog = new javax.swing.JTextArea(6, 80);
     private final javax.swing.JScrollPane scrollLog = new javax.swing.JScrollPane(areaLog);
@@ -161,12 +161,21 @@ public class VentanaEstado extends JFrame {
         aplicarDuracion();
         refrescar();
         temporizador.start();
-        setSize(Math.max(700, 420 * Math.max(1, paneles.length)), 640);
+        setSize(Math.max(960, 420 * Math.max(1, paneles.length)), 700);
         setLocationRelativeTo(null);
+        setExtendedState(JFrame.MAXIMIZED_BOTH);
     }
 
     private void iniciar() {
         if (iniciada) {
+            return;
+        }
+        if (simulador.isRequiereCargaJsonObligatoria() && !simulador.tieneAmbosJsonCargados()) {
+            JOptionPane.showMessageDialog(this,
+                    "Debe cargar obligatoriamente ambos archivos JSON (Sistema de Archivos y Procesos/Configuración)\n"
+                    + "antes de iniciar el reloj global de ÁvilaOS.",
+                    "Carga de JSON obligatoria", JOptionPane.WARNING_MESSAGE);
+            abrirConfiguracion();
             return;
         }
         iniciada = true;
@@ -250,7 +259,7 @@ public class VentanaEstado extends JFrame {
         simulador.detener();
         dispose();
         SwingUtilities.invokeLater(() -> {
-            Simulador nuevo = config.EscenarioDemo.crear();
+            Simulador nuevo = com.mycompany.proyecto1sosimulador.Proyecto1SOsimulador.crearSimuladorPendienteDeJson();
             VentanaEstado nuevaVentana = new VentanaEstado(nuevo);
             nuevaVentana.setVisible(true);
         });
@@ -287,6 +296,18 @@ public class VentanaEstado extends JFrame {
         dispose();
     }
 
+    /**
+     * Cierra la ventana actual y abre una nueva {@link VentanaEstado} enlazada
+     * al {@code nuevoSimulador} construido tras cargar los JSON obligatorios.
+     */
+    public void cerrarYReemplazar(Simulador nuevoSimulador) {
+        temporizador.stop();
+        cerrarVentanasHijas();
+        simulador.detener();
+        dispose();
+        SwingUtilities.invokeLater(() -> new VentanaEstado(nuevoSimulador).setVisible(true));
+    }
+
     /** Lee el estado de forma segura y actualiza todos los paneles. */
     private void refrescar() {
         final StringBuilder logSb = new StringBuilder();
@@ -309,12 +330,13 @@ public class VentanaEstado extends JFrame {
         SwingUtilities.invokeLater(() -> {
             lblCiclo.setText("Ciclo: " + cicloActual[0]);
             lblEstado.setText("Estado: " + textoEstado());
-            btnIniciar.setEnabled(!iniciada && !detenida);
+            boolean faltaJson = simulador.isRequiereCargaJsonObligatoria() && !simulador.tieneAmbosJsonCargados();
+            btnIniciar.setEnabled(!iniciada && !detenida && !faltaJson);
             btnPausa.setEnabled(iniciada && !detenida && !simulador.isLimiteAlcanzado());
             btnPausa.setText(simulador.estaPausada() ? "Reanudar" : "Pausar");
             btnDetener.setEnabled(iniciada && !detenida);
             btnReiniciar.setEnabled(true);
-            btnCrear.setEnabled(!detenida && !simulador.isLimiteAlcanzado());
+            btnCrear.setEnabled(!detenida && !simulador.isLimiteAlcanzado() && !faltaJson);
 
             if (logSb.length() > 0) {
                 String nuevoTexto = logSb.toString();
@@ -361,6 +383,9 @@ public class VentanaEstado extends JFrame {
             return "detenida (haga clic en Reiniciar para comenzar de nuevo)";
         }
         if (!iniciada) {
+            if (simulador.isRequiereCargaJsonObligatoria() && !simulador.tieneAmbosJsonCargados()) {
+                return "pendiente cargar ambos JSON obligatorios";
+            }
             return "sin iniciar";
         }
         if (simulador.estaPausada()) {

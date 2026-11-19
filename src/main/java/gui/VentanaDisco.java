@@ -21,6 +21,7 @@ import javax.swing.JSpinner;
 import javax.swing.JTextArea;
 import javax.swing.SpinnerNumberModel;
 import javax.swing.Timer;
+import javax.swing.text.NumberFormatter;
 import simulacion.Simulador;
 
 /**
@@ -56,6 +57,13 @@ public class VentanaDisco extends JDialog {
     public VentanaDisco(JFrame dueno, Simulador simulador) {
         super(dueno, "ÁvilaOS – Disco y planificación de E/S", false);
         this.simulador = simulador;
+        setResizable(true);
+
+        if (spinVelocidad.getEditor() instanceof JSpinner.NumberEditor ne
+                && ne.getTextField().getFormatter() instanceof NumberFormatter nf) {
+            nf.setAllowsInvalid(false);
+            nf.setCommitsOnValidEdit(true);
+        }
 
         JPanel control = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 4));
         control.add(new JLabel("Política:"));
@@ -93,7 +101,7 @@ public class VentanaDisco extends JDialog {
         derecha.add(scrollCola, BorderLayout.CENTER);
 
         JPanel centro = new JPanel(new BorderLayout());
-        centro.setBorder(BorderFactory.createTitledBorder("Mapa de bloques"));
+        centro.setBorder(BorderFactory.createTitledBorder("Mapa de bloques (pase el cursor para ver el archivo)"));
         centro.add(mapa, BorderLayout.CENTER);
 
         setLayout(new BorderLayout(6, 6));
@@ -112,11 +120,31 @@ public class VentanaDisco extends JDialog {
     private static JPanel leyenda() {
         JPanel p = new JPanel(new FlowLayout(FlowLayout.LEFT, 12, 2));
         p.add(muestra(PanelMapaDisco.COLOR_LIBRE, "Libre"));
-        p.add(muestra(PanelMapaDisco.COLOR_ARCHIVO_DEFECTO, "Archivo (color propio)"));
+        p.add(muestraMultiColor("Archivos (1 color por archivo)"));
         p.add(muestra(PanelMapaDisco.COLOR_SWAP_LIBRE, "Swap libre"));
         p.add(muestra(PanelMapaDisco.COLOR_SWAP_OCUPADO, "Swap ocupado"));
-        p.add(new JLabel("Rojo: cabezal   Azul: solicitud en curso   ●: solicitud en espera"));
+        p.add(new JLabel("Borde rojo: cabezal   Borde azul: en curso   ●: en espera"));
         return p;
+    }
+
+    private static JLabel muestraMultiColor(String texto) {
+        JLabel l = new JLabel(texto);
+        l.setIcon(new javax.swing.Icon() {
+            public int getIconWidth() { return 28; }
+            public int getIconHeight() { return 14; }
+            public void paintIcon(java.awt.Component comp, java.awt.Graphics g, int x, int y) {
+                Color[] cols = {
+                    new Color(0x3498DB), new Color(0x2ECC71), new Color(0x9B59B6), new Color(0xE84393)
+                };
+                for (int i = 0; i < cols.length; i++) {
+                    g.setColor(cols[i]);
+                    g.fillRect(x + i * 7, y, 7, 14);
+                }
+                g.setColor(Color.GRAY);
+                g.drawRect(x, y, 27, 13);
+            }
+        });
+        return l;
     }
 
     private static JLabel muestra(Color c, String texto) {

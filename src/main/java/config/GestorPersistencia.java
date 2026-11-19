@@ -1,9 +1,16 @@
 package config;
 
+import archivos.SistemaArchivos;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
+import com.google.gson.JsonSyntaxException;
+import disco.DiscoSimulado;
 import enums.PoliticaPlanificacion;
 import enums.TipoInstruccion;
+import enums.TipoOperacionES;
 import enums.TipoProceso;
 import estructuras.Iterador;
 import estructuras.ListaEnlazada;
@@ -22,13 +29,20 @@ import java.io.Writer;
 import java.nio.charset.StandardCharsets;
 import modelo.Instruccion;
 import modelo.PCB;
+import nucleo.Computador;
+import planificacion.AlgoritmoPlanificacion;
+import planificacion.FabricaPoliticas;
+import planificacion.RoundRobin;
+import simulacion.Simulador;
 
 /**
- * Gestor de persistencia para guardar y cargar configuraciones completas de simulación
- * en formatos JSON y CSV.
+ * Gestor de persistencia del Proyecto 2 de ÁvilaOS (JSON dual obligatorio y configuración).
  *
- * <p>Restricción arquitectónica: Mapea los datos exclusivamente hacia estructuras propias
- * ({@link ListaEnlazada}), sin utilizar ninguna colección de {@code java.util}.</p>
+ * <p>Permite cargar y guardar el estado del sistema de archivos (<b>JSON 1</b>:
+ * {@code diskConfig} + {@code fileSystem}), cargar las políticas y procesos de E/S
+ * (<b>JSON 2</b>: {@code globalConfig} + {@code computer} + {@code processes}), así como
+ * guardar/cargar configuraciones generales en JSON y CSV usando exclusivamente
+ * {@link ListaEnlazada} (sin colecciones de {@code java.util}).</p>
  */
 public final class GestorPersistencia {
 
@@ -41,14 +55,253 @@ public final class GestorPersistencia {
         // Clase de utilidades estáticas.
     }
 
+    // =========================================================================
+    // PERSISTENCIA DUAL OBLIGATORIA DEL PROYECTO 2 (2 ARCHIVOS JSON)
+    // =========================================================================
+
     /**
-     * Guarda la configuración de simulación en el archivo especificado utilizando el formato indicado.
-     *
-     * @param config configuración a guardar.
-     * @param archivo archivo de destino.
-     * @param formato formato de serialización (JSON o CSV).
-     * @throws IOException si ocurre un error de entrada/salida.
+     * Carga y valida el <b>JSON 1 (Sistema de Archivos y Disco)</b> desde archivo.
      */
+    public static ConfigSistemaArchivos cargarSistemaArchivosJSON(File archivo) throws IOException {
+        if (archivo == null || !archivo.exists() || !archivo.isFile()) {
+            throw new IOException("El archivo JSON del sistema de archivos no existe: " + archivo);
+        }
+        try (BufferedReader reader = new BufferedReader(
+                new InputStreamReader(new FileInputStream(archivo), StandardCharsets.UTF_8))) {
+            return parsearYDeserializarSistemaArchivos(reader);
+        } catch (JsonSyntaxException ex) {
+            throw new IOException("Formato JSON inválido en archivo de sistema de archivos: " + ex.getMessage(), ex);
+        }
+    }
+
+    /** Deserializa y valida el JSON 1 desde una cadena de texto. */
+    public static ConfigSistemaArchivos cargarSistemaArchivosDesdeTexto(String contenido) throws IOException {
+        if (contenido == null || contenido.trim().isEmpty()) {
+            throw new IOException("El JSON del sistema de archivos está vacío.");
+        }
+        try {
+            return parsearYDeserializarSistemaArchivos(new java.io.StringReader(contenido));
+        } catch (JsonSyntaxException ex) {
+            throw new IOException("Formato JSON inválido: " + ex.getMessage(), ex);
+        }
+    }
+
+    private static ConfigSistemaArchivos parsearYDeserializarSistemaArchivos(java.io.Reader reader) throws IOException {
+        JsonObject obj = parsearObjetoRaiz(reader, "sistema de archivos");
+        if (obj.has("globalConfig") || obj.has("computer") || obj.has("processes")) {
+            throw new IOException(
+                    "El archivo seleccionado corresponde a Procesos y Configuración (JSON 2), "
+                            + "no al Sistema de Archivos y Disco (JSON 1).");
+        }
+        if (!obj.has("diskConfig") || !obj.get("diskConfig").isJsonObject()) {
+            throw new IOException("Falta el bloque obligatorio 'diskConfig' en el JSON de Sistema de Archivos.");
+        }
+        JsonObject diskObj = obj.getAsJsonObject("diskConfig");
+        if (!diskObj.has("totalBlocks") || !diskObj.has("initialHead")) {
+            throw new IOException("El bloque 'diskConfig' debe incluir 'totalBlocks' e 'initialHead'.");
+        }
+        if (!obj.has("fileSystem") || !obj.get("fileSystem").isJsonArray()) {
+            throw new IOException("Falta el arreglo obligatorio 'fileSystem' en el JSON de Sistema de Archivos.");
+        }
+        ConfigSistemaArchivos cfg = GSON.fromJson(obj, ConfigSistemaArchivos.class);
+        if (cfg == null) {
+            throw new IOException("No se pudo deserializar el JSON del sistema de archivos.");
+        }
+        cfg.validarEstricto();
+        return cfg;
+    }
+
+    /** Guarda el estado de un {@link SistemaArchivos} en el formato oficial del JSON 1. */
+    public static void guardarSistemaArchivosJSON(SistemaArchivos sa, File archivo) throws IOException {
+        guardarSistemaArchivosJSON(ConfigSistemaArchivos.desdeSistemaArchivos(sa), archivo);
+    }
+
+    /** Guarda una configuración de sistema de archivos en el formato oficial del JSON 1. */
+    public static void guardarSistemaArchivosJSON(ConfigSistemaArchivos config, File archivo) throws IOException {
+        if (config == null) {
+            throw new IllegalArgumentException("La configuración del sistema de archivos no puede ser nula.");
+        }
+        if (archivo == null) {
+            throw new IllegalArgumentException("El archivo de destino no puede ser nulo.");
+        }
+        config.validarEstricto();
+        asegurarDirectorioPadre(archivo);
+        try (BufferedWriter writer = new BufferedWriter(
+                new OutputStreamWriter(new FileOutputStream(archivo), StandardCharsets.UTF_8))) {
+            GSON.toJson(config, writer);
+            writer.flush();
+        }
+    }
+
+    /** Serializa el JSON 1 como cadena de texto. */
+    public static String guardarSistemaArchivosComoTexto(ConfigSistemaArchivos config) {
+        if (config == null) {
+            throw new IllegalArgumentException("La configuración del sistema de archivos no puede ser nula.");
+        }
+        config.validarEstricto();
+        return GSON.toJson(config);
+    }
+
+    /**
+     * Carga y valida el <b>JSON 2 (Procesos y Configuración Global/Computador)</b> desde archivo.
+     */
+    public static ConfigProcesosDisco cargarProcesosJSON(File archivo) throws IOException {
+        if (archivo == null || !archivo.exists() || !archivo.isFile()) {
+            throw new IOException("El archivo JSON de procesos no existe: " + archivo);
+        }
+        try (BufferedReader reader = new BufferedReader(
+                new InputStreamReader(new FileInputStream(archivo), StandardCharsets.UTF_8))) {
+            return parsearYDeserializarProcesos(reader);
+        } catch (JsonSyntaxException ex) {
+            throw new IOException("Formato JSON inválido en archivo de procesos: " + ex.getMessage(), ex);
+        }
+    }
+
+    /** Deserializa y valida el JSON 2 desde una cadena de texto. */
+    public static ConfigProcesosDisco cargarProcesosDesdeTexto(String contenido) throws IOException {
+        if (contenido == null || contenido.trim().isEmpty()) {
+            throw new IOException("El JSON de procesos está vacío.");
+        }
+        try {
+            return parsearYDeserializarProcesos(new java.io.StringReader(contenido));
+        } catch (JsonSyntaxException ex) {
+            throw new IOException("Formato JSON inválido: " + ex.getMessage(), ex);
+        }
+    }
+
+    private static ConfigProcesosDisco parsearYDeserializarProcesos(java.io.Reader reader) throws IOException {
+        JsonObject obj = parsearObjetoRaiz(reader, "procesos y configuración");
+        if (obj.has("diskConfig") || obj.has("fileSystem")) {
+            throw new IOException(
+                    "El archivo seleccionado corresponde al Sistema de Archivos y Disco (JSON 1), "
+                            + "no a Procesos y Configuración (JSON 2).");
+        }
+        if (!obj.has("globalConfig") || !obj.get("globalConfig").isJsonObject()) {
+            throw new IOException("Falta el bloque obligatorio 'globalConfig' en el JSON de Procesos.");
+        }
+        if (!obj.has("computer") || !obj.get("computer").isJsonObject()) {
+            throw new IOException("Falta el bloque obligatorio 'computer' en el JSON de Procesos.");
+        }
+        if (!obj.has("processes") || !obj.get("processes").isJsonArray()) {
+            throw new IOException("Falta el arreglo obligatorio 'processes' en el JSON de Procesos.");
+        }
+        ConfigProcesosDisco cfg = GSON.fromJson(obj, ConfigProcesosDisco.class);
+        if (cfg == null) {
+            throw new IOException("No se pudo deserializar el JSON de procesos.");
+        }
+        cfg.validarEstricto();
+        return cfg;
+    }
+
+    private static JsonObject parsearObjetoRaiz(java.io.Reader reader, String descripcion) throws IOException {
+        JsonElement elem = JsonParser.parseReader(reader);
+        if (elem == null || !elem.isJsonObject()) {
+            throw new IOException("El JSON de " + descripcion + " debe ser un objeto raíz válido.");
+        }
+        return elem.getAsJsonObject();
+    }
+
+    /** Guarda la configuración del JSON 2 en archivo. */
+    public static void guardarProcesosJSON(ConfigProcesosDisco config, File archivo) throws IOException {
+        if (config == null) {
+            throw new IllegalArgumentException("La configuración de procesos no puede ser nula.");
+        }
+        if (archivo == null) {
+            throw new IllegalArgumentException("El archivo de destino no puede ser nulo.");
+        }
+        config.validarEstricto();
+        asegurarDirectorioPadre(archivo);
+        try (BufferedWriter writer = new BufferedWriter(
+                new OutputStreamWriter(new FileOutputStream(archivo), StandardCharsets.UTF_8))) {
+            GSON.toJson(config, writer);
+            writer.flush();
+        }
+    }
+
+    /** Serializa el JSON 2 como cadena de texto. */
+    public static String guardarProcesosComoTexto(ConfigProcesosDisco config) {
+        if (config == null) {
+            throw new IllegalArgumentException("La configuración de procesos no puede ser nula.");
+        }
+        config.validarEstricto();
+        return GSON.toJson(config);
+    }
+
+    /**
+     * Construye un {@link Simulador} completo con 1 único {@link Computador},
+     * {@link DiscoSimulado} y {@link SistemaArchivos} a partir de los dos archivos
+     * JSON obligatorios del Proyecto 2.
+     */
+    public static Simulador construirSimuladorDesdeDosJSON(ConfigSistemaArchivos fsCfg,
+                                                           ConfigProcesosDisco procCfg) {
+        if (fsCfg == null || procCfg == null) {
+            throw new IllegalArgumentException(
+                    "Se requieren ambos archivos JSON (Sistema de Archivos y Procesos/Configuración).");
+        }
+        fsCfg.validarEstricto();
+        procCfg.validarEstricto();
+
+        DiscoSimulado disco = new DiscoSimulado("Disco-SD",
+                fsCfg.getDiskConfig().getTotalBlocks(),
+                fsCfg.getDiskConfig().getInitialHead(),
+                0);
+        SistemaArchivos sa = new SistemaArchivos(disco);
+        fsCfg.aplicarADiscoYSistema(disco, sa);
+
+        return ensamblarSimulador(disco, sa, procCfg);
+    }
+
+    /**
+     * Reinicia una simulación cargando un nuevo JSON 2 de procesos pero <b>preservando
+     * intacto el estado modificado del disco y sistema de archivos</b> de la ejecución anterior.
+     */
+    public static Simulador construirSimuladorPreservandoDisco(SistemaArchivos saPreservado,
+                                                                ConfigProcesosDisco procCfg) {
+        if (saPreservado == null || saPreservado.getDisco() == null) {
+            throw new IllegalArgumentException("No existe un sistema de archivos/disco previo que preservar.");
+        }
+        if (procCfg == null) {
+            throw new IllegalArgumentException("La configuración de procesos (JSON 2) no puede ser nula.");
+        }
+        procCfg.validarEstricto();
+        return ensamblarSimulador(saPreservado.getDisco(), saPreservado, procCfg);
+    }
+
+    private static Simulador ensamblarSimulador(DiscoSimulado disco, SistemaArchivos sa,
+                                                ConfigProcesosDisco procCfg) {
+        disco.configurarAreaSwap(procCfg.getGlobalConfig().getSwapSizeBlocks());
+        disco.setPolitica(procCfg.getPoliticaDiscoEnum());
+
+        PoliticaPlanificacion polCpu = procCfg.getPoliticaCpuEnum();
+        int quantum = procCfg.getComputer().getQuantum();
+        AlgoritmoPlanificacion alg = (polCpu == PoliticaPlanificacion.ROUND_ROBIN)
+                ? FabricaPoliticas.crear(PoliticaPlanificacion.ROUND_ROBIN,
+                        quantum > 0 ? quantum : RoundRobin.QUANTUM_POR_DEFECTO)
+                : FabricaPoliticas.crear(polCpu);
+
+        Computador pc = new Computador(1, "PC-1", procCfg.getComputer().getRamCapacity(), alg);
+
+        Simulador sim = new Simulador();
+        sim.setDuracionCicloMs(procCfg.getGlobalConfig().getCycleDurationMs());
+        sim.registrarComputador(pc);
+        sim.setDisco(disco);
+        sim.setServicioArchivos(sa);
+
+        Iterador<ConfigProcesosDisco.ProcesoJson> it = procCfg.getProcesses().iterador();
+        while (it.haySiguiente()) {
+            ConfigProcesosDisco.ProcesoJson pj = it.siguiente();
+            PCB pcb = ConfigProcesosDisco.crearPCB(pj, pc.getId(), sim.getCicloActual());
+            sim.cargarProceso(pcb);
+        }
+
+        sim.marcarJsonCargados(true, true);
+        return sim;
+    }
+
+    // =========================================================================
+    // PERSISTENCIA GENERAL DE ConfiguracionSimulacion (JSON Y CSV SIN BUFFERS)
+    // =========================================================================
+
     public static void guardarConfiguracion(ConfiguracionSimulacion config, File archivo, FormatoPersistencia formato)
             throws IOException {
         if (config == null) {
@@ -60,32 +313,20 @@ public final class GestorPersistencia {
         if (formato == null) {
             formato = detectarFormatoPorExtension(archivo.getName());
         }
-
         config.validarEstricto();
-
-        File dirPadre = archivo.getParentFile();
-        if (dirPadre != null && !dirPadre.exists()) {
-            dirPadre.mkdirs();
-        }
+        asegurarDirectorioPadre(archivo);
 
         try (BufferedWriter writer = new BufferedWriter(
                 new OutputStreamWriter(new FileOutputStream(archivo), StandardCharsets.UTF_8))) {
             if (formato == FormatoPersistencia.JSON) {
-                guardarJSON(config, writer);
+                GSON.toJson(config, writer);
+                writer.flush();
             } else {
                 guardarCSV(config, writer);
             }
         }
     }
 
-    /**
-     * Carga y valida una configuración de simulación desde el archivo especificado.
-     *
-     * @param archivo archivo a leer.
-     * @param formato formato de serialización (JSON o CSV). Si es nulo, se detecta por extensión.
-     * @return objeto {@link ConfiguracionSimulacion} cargado y validado.
-     * @throws IOException si ocurre un error de lectura o parseo.
-     */
     public static ConfiguracionSimulacion cargarConfiguracion(File archivo, FormatoPersistencia formato)
             throws IOException {
         if (archivo == null || !archivo.exists() || !archivo.isFile()) {
@@ -94,76 +335,60 @@ public final class GestorPersistencia {
         if (formato == null) {
             formato = detectarFormatoPorExtension(archivo.getName());
         }
-
         ConfiguracionSimulacion config;
         try (BufferedReader reader = new BufferedReader(
                 new InputStreamReader(new FileInputStream(archivo), StandardCharsets.UTF_8))) {
             if (formato == FormatoPersistencia.JSON) {
-                config = cargarJSON(reader);
+                config = GSON.fromJson(reader, ConfiguracionSimulacion.class);
             } else {
                 config = cargarCSV(reader);
             }
         }
-
         if (config == null) {
             throw new IOException("No se pudo deserializar la configuración del archivo.");
         }
-
         config.validarEstricto();
         return config;
     }
 
-    /** Serializa la configuración como una cadena de texto en formato JSON o CSV. */
     public static String guardarComoTexto(ConfiguracionSimulacion config, FormatoPersistencia formato) throws IOException {
         StringWriter sw = new StringWriter();
         if (formato == FormatoPersistencia.JSON) {
-            guardarJSON(config, sw);
+            GSON.toJson(config, sw);
+            sw.flush();
         } else {
             guardarCSV(config, sw);
         }
         return sw.toString();
     }
 
-    /** Deserializa la configuración a partir de una cadena de texto en formato JSON o CSV. */
     public static ConfiguracionSimulacion cargarDesdeTexto(String contenido, FormatoPersistencia formato) throws IOException {
         if (contenido == null || contenido.trim().isEmpty()) {
             throw new IOException("El contenido está vacío.");
         }
         StringReader sr = new StringReader(contenido);
-        ConfiguracionSimulacion config = (formato == FormatoPersistencia.JSON) ? cargarJSON(sr) : cargarCSV(sr);
+        ConfiguracionSimulacion config = (formato == FormatoPersistencia.JSON)
+                ? GSON.fromJson(sr, ConfiguracionSimulacion.class)
+                : cargarCSV(sr);
         if (config != null) {
             config.validarEstricto();
         }
         return config;
     }
 
-    // =========================================================================
-    // PERSISTENCIA JSON
-    // =========================================================================
-
-    private static void guardarJSON(ConfiguracionSimulacion config, Writer writer) throws IOException {
-        GSON.toJson(config, writer);
-        writer.flush();
-    }
-
-    private static ConfiguracionSimulacion cargarJSON(Reader reader) {
-        return GSON.fromJson(reader, ConfiguracionSimulacion.class);
-    }
-
-    // =========================================================================
-    // PERSISTENCIA CSV
-    // =========================================================================
-
     private static void guardarCSV(ConfiguracionSimulacion config, Writer writer) throws IOException {
         BufferedWriter bw = (writer instanceof BufferedWriter) ? (BufferedWriter) writer : new BufferedWriter(writer);
 
-        bw.write("# CONFIGURACION_AVILA_OS");
+        bw.write("# CONFIGURACION_AVILA_OS_P2");
         bw.newLine();
         bw.write("# PARAMETROS_GLOBALES");
         bw.newLine();
-        bw.write("duracionCicloMs,latenciaRedCiclos");
+        bw.write("duracionCicloMs,totalBloquesDisco,tamanoSwap,cabezalInicial,velocidadCabezal,politicaDiscoInicial");
         bw.newLine();
-        bw.write(config.getDuracionCicloMs() + "," + config.getLatenciaRedCiclos());
+        bw.write(config.getDuracionCicloMs() + "," + config.getTotalBloquesDisco() + ","
+                + config.getTamanoSwap() + "," + config.getCabezalInicial() + ","
+                + config.getVelocidadCabezal() + ","
+                + (config.getPoliticaDiscoInicial() != null ? config.getPoliticaDiscoInicial().name() : "FIFO"));
         bw.newLine();
         bw.newLine();
 
@@ -180,31 +405,19 @@ public final class GestorPersistencia {
         }
         bw.newLine();
 
-        bw.write("# BUFFERS");
-        bw.newLine();
-        bw.write("id,capacidad,idComputadorAnfitrion,tamanoElemento");
-        bw.newLine();
-        Iterador<ConfigBuffer> itBuf = config.getBuffers().iterador();
-        while (itBuf.haySiguiente()) {
-            ConfigBuffer buf = itBuf.siguiente();
-            bw.write(escaparCSV(buf.getId()) + "," + buf.getCapacidad() + "," + buf.getIdComputadorAnfitrion() + ","
-                    + buf.getTamanoElemento());
-            bw.newLine();
-        }
-        bw.newLine();
-
         bw.write("# PROCESOS");
         bw.newLine();
-        bw.write("id,nombre,tipo,computadorAsignado,instrucciones,memoria,prioridad,deadline,periodoES,idBufferTarget,ciclosPorAcceso,elementosRequeridos");
+        bw.write("id,nombre,tipo,computadorAsignado,instrucciones,memoria,prioridad,deadline,periodoES,ciclosPorAcceso,operacion,rutaObjetivo,tamanoArchivoBloques");
         bw.newLine();
         Iterador<ConfigProceso> itProc = config.getProcesos().iterador();
         while (itProc.haySiguiente()) {
             ConfigProceso p = itProc.siguiente();
+            String op = p.getOperacion() != null ? p.getOperacion().getCodigoJson() : "";
             bw.write(p.getId() + "," + escaparCSV(p.getNombre()) + "," + p.getTipo().name() + ","
                     + p.getComputadorAsignado() + "," + p.getInstrucciones() + "," + p.getMemoria() + ","
                     + p.getPrioridad() + "," + p.getDeadline() + "," + p.getPeriodoES() + ","
-                    + escaparCSV(p.getIdBufferTarget()) + "," + p.getCiclosPorAcceso() + ","
-                    + p.getElementosRequeridos());
+                    + p.getCiclosPorAcceso() + "," + escaparCSV(op) + ","
+                    + escaparCSV(p.getRutaObjetivo()) + "," + p.getTamanoArchivoBloques());
             bw.newLine();
         }
         bw.flush();
@@ -214,35 +427,27 @@ public final class GestorPersistencia {
         BufferedReader br = (reader instanceof BufferedReader) ? (BufferedReader) reader : new BufferedReader(reader);
         ConfiguracionSimulacion config = new ConfiguracionSimulacion();
         config.setComputadores(new ListaEnlazada<>());
-        config.setBuffers(new ListaEnlazada<>());
         config.setProcesos(new ListaEnlazada<>());
 
         String linea;
         String seccionActual = "";
-
         while ((linea = br.readLine()) != null) {
             linea = linea.trim();
             if (linea.isEmpty()) {
                 continue;
             }
-
             if (linea.startsWith("#")) {
-                String encabezado = linea.toUpperCase();
-                if (encabezado.contains("PARAMETROS_GLOBALES") || encabezado.contains("GLOBAL")) {
+                String enc = linea.toUpperCase();
+                if (enc.contains("GLOBAL")) {
                     seccionActual = "GLOBAL";
-                } else if (encabezado.contains("COMPUTADORES")) {
+                } else if (enc.contains("COMPUTADORES")) {
                     seccionActual = "COMPUTADORES";
-                } else if (encabezado.contains("BUFFERS")) {
-                    seccionActual = "BUFFERS";
-                } else if (encabezado.contains("PROCESOS")) {
+                } else if (enc.contains("PROCESOS")) {
                     seccionActual = "PROCESOS";
                 }
                 continue;
             }
-
-            // Omitir cabeceras de columnas
-            if (linea.startsWith("duracionCicloMs") || linea.startsWith("id,nombre")
-                    || linea.startsWith("id,capacidad") || linea.startsWith("id,nombre,tipo")) {
+            if (linea.startsWith("duracionCicloMs") || linea.startsWith("id,nombre")) {
                 continue;
             }
 
@@ -253,58 +458,53 @@ public final class GestorPersistencia {
 
             try {
                 switch (seccionActual) {
-                    case "GLOBAL":
-                        if (partes.length >= 2) {
+                    case "GLOBAL" -> {
+                        if (partes.length >= 6) {
                             config.setDuracionCicloMs(Long.parseLong(partes[0]));
-                            config.setLatenciaRedCiclos(Integer.parseInt(partes[1]));
+                            config.setTotalBloquesDisco(Integer.parseInt(partes[1]));
+                            config.setTamanoSwap(Integer.parseInt(partes[2]));
+                            config.setCabezalInicial(Integer.parseInt(partes[3]));
+                            config.setVelocidadCabezal(Integer.parseInt(partes[4]));
+                            config.setPoliticaDiscoInicial(enums.PoliticaDisco.desdeTexto(partes[5]));
                         }
-                        break;
-                    case "COMPUTADORES":
+                    }
+                    case "COMPUTADORES" -> {
                         if (partes.length >= 5) {
-                            int id = Integer.parseInt(partes[0]);
-                            String nombre = partes[1];
-                            long ram = Long.parseLong(partes[2]);
-                            PoliticaPlanificacion pol = parsearPolitica(partes[3]);
-                            int quantum = Integer.parseInt(partes[4]);
-                            config.getComputadores().agregar(new ConfigComputador(id, nombre, ram, pol, quantum));
+                            config.getComputadores().agregar(new ConfigComputador(
+                                    Integer.parseInt(partes[0]),
+                                    partes[1],
+                                    Long.parseLong(partes[2]),
+                                    parsearPolitica(partes[3]),
+                                    Integer.parseInt(partes[4])));
                         }
-                        break;
-                    case "BUFFERS":
-                        if (partes.length >= 3) {
-                            String idBuf = partes[0];
-                            int cap = Integer.parseInt(partes[1]);
-                            int anf = Integer.parseInt(partes[2]);
-                            long tam = partes.length >= 4 && !partes[3].isEmpty() ? Long.parseLong(partes[3]) : 4;
-                            config.getBuffers().agregar(new ConfigBuffer(idBuf, cap, anf, tam));
+                    }
+                    case "PROCESOS" -> {
+                        if (partes.length >= 10) {
+                            TipoOperacionES op = (partes.length >= 11 && !partes[10].isEmpty())
+                                    ? TipoOperacionES.desdeTexto(partes[10]) : null;
+                            String ruta = (partes.length >= 12) ? partes[11] : "";
+                            int tamArchivo = (partes.length >= 13 && !partes[12].isEmpty())
+                                    ? Integer.parseInt(partes[12]) : 0;
+                            config.getProcesos().agregar(new ConfigProceso(
+                                    Integer.parseInt(partes[0]),
+                                    partes[1],
+                                    parsearTipoProceso(partes[2]),
+                                    Integer.parseInt(partes[3]),
+                                    Integer.parseInt(partes[4]),
+                                    Long.parseLong(partes[5]),
+                                    Integer.parseInt(partes[6]),
+                                    Long.parseLong(partes[7]),
+                                    Integer.parseInt(partes[8]),
+                                    Integer.parseInt(partes[9]),
+                                    op, ruta, tamArchivo, "", enums.ModoUsuario.ADMINISTRADOR, "admin"));
                         }
-                        break;
-                    case "PROCESOS":
-                        if (partes.length >= 12) {
-                            int idProc = Integer.parseInt(partes[0]);
-                            String nomProc = partes[1];
-                            TipoProceso tipoProc = parsearTipoProceso(partes[2]);
-                            int compAsig = Integer.parseInt(partes[3]);
-                            int instr = Integer.parseInt(partes[4]);
-                            long mem = Long.parseLong(partes[5]);
-                            int prio = Integer.parseInt(partes[6]);
-                            long dl = Long.parseLong(partes[7]);
-                            int per = Integer.parseInt(partes[8]);
-                            String bufTarget = partes[9];
-                            int ciclosAcceso = Integer.parseInt(partes[10]);
-                            int elemReq = Integer.parseInt(partes[11]);
-                            config.getProcesos().agregar(new ConfigProceso(idProc, nomProc, tipoProc, compAsig,
-                                    instr, mem, prio, dl, per, bufTarget, ciclosAcceso, elemReq));
-                        }
-                        break;
-                    default:
-                        // Línea fuera de sección identificada, se ignora.
-                        break;
+                    }
+                    default -> { }
                 }
             } catch (Exception e) {
-                throw new IOException("Error procesando línea CSV en sección [" + seccionActual + "]: '" + linea + "' -> " + e.getMessage(), e);
+                throw new IOException("Error en sección [" + seccionActual + "]: '" + linea + "' -> " + e.getMessage(), e);
             }
         }
-
         return config;
     }
 
@@ -312,42 +512,41 @@ public final class GestorPersistencia {
     // UTILIDADES DE CONSTRUCCIÓN Y PARSEO
     // =========================================================================
 
-    /**
-     * Construye una instancia de {@link PCB} a partir de la configuración de un proceso.
-     * Carga el programa de instrucciones utilizando exclusivamente {@link ListaEnlazada}.
-     */
+    /** Construye un {@link PCB} a partir de {@link ConfigProceso}. */
     public static PCB crearPCB(ConfigProceso cp, long cicloActual) {
         if (cp == null) {
             throw new IllegalArgumentException("El proceso de configuración no puede ser nulo.");
         }
-
         ListaEnlazada<Instruccion> programa = new ListaEnlazada<>();
         TipoProceso tipo = cp.getTipo();
+        int totalInstr = Math.max(1, cp.getInstrucciones());
 
-        if (tipo == TipoProceso.PRODUCTOR) {
-            int req = Math.max(1, cp.getElementosRequeridos());
-            for (int i = 0; i < req; i++) {
-                programa.agregar(new Instruccion(TipoInstruccion.PRODUCIR));
+        if (cp.getOperacion() != null && cp.getOperacion().esOperacionArchivo()) {
+            programa.agregar(new Instruccion(TipoInstruccion.OPERACION_ES, cp.getOperacion().getCodigoJson()));
+            for (int i = 1; i < totalInstr; i++) {
+                programa.agregar(new Instruccion(TipoInstruccion.CPU));
             }
-        } else if (tipo == TipoProceso.CONSUMIDOR) {
-            int req = Math.max(1, cp.getElementosRequeridos());
-            for (int i = 0; i < req; i++) {
-                programa.agregar(new Instruccion(TipoInstruccion.CONSUMIR));
-            }
-        } else {
-            int totalInstr = Math.max(1, cp.getInstrucciones());
-            int periodoES = (tipo == TipoProceso.IO_BOUND) ? cp.getPeriodoES() : 0;
-            for (int i = 1; i <= totalInstr; i++) {
-                boolean esES = periodoES > 0 && (i % periodoES == 0);
-                programa.agregar(new Instruccion(esES ? TipoInstruccion.READ_IO : TipoInstruccion.CPU,
-                        esES ? String.valueOf(Math.max(1, cp.getCiclosPorAcceso())) : ""));
-            }
+            PCB pcb = new PCB(cp.getNombre(), cp.getComputadorAsignado(), TipoProceso.IO_BOUND,
+                    cp.getPrioridad(), cp.getMemoria(), cp.getDeadline(),
+                    "", 0, 0, programa, cicloActual);
+            pcb.setOperacion(cp.getOperacion());
+            pcb.setRutaObjetivo(cp.getRutaObjetivo());
+            pcb.setTamanoArchivoBloques(cp.getTamanoArchivoBloques());
+            pcb.setNuevoNombre(cp.getNuevoNombre());
+            pcb.setModoSolicitante(cp.getModoSolicitante());
+            pcb.setUsuario(cp.getUsuario());
+            return pcb;
         }
 
+        int periodoES = (tipo == TipoProceso.IO_BOUND) ? cp.getPeriodoES() : 0;
+        for (int i = 1; i <= totalInstr; i++) {
+            boolean esES = periodoES > 0 && (i % periodoES == 0);
+            programa.agregar(new Instruccion(esES ? TipoInstruccion.READ_IO : TipoInstruccion.CPU,
+                    esES ? String.valueOf(Math.max(1, cp.getCiclosPorAcceso())) : ""));
+        }
         return new PCB(cp.getNombre(), cp.getComputadorAsignado(), tipo,
                 cp.getPrioridad(), cp.getMemoria(), cp.getDeadline(),
-                cp.getIdBufferTarget(), cp.getElementosRequeridos(), cp.getCiclosPorAcceso(),
-                programa, cicloActual);
+                "", 0, cp.getCiclosPorAcceso(), programa, cicloActual);
     }
 
     public static PoliticaPlanificacion parsearPolitica(String texto) {
@@ -375,12 +574,6 @@ public final class GestorPersistencia {
         if (t.contains("IO") || t.contains("I/O")) {
             return TipoProceso.IO_BOUND;
         }
-        if (t.contains("PROD")) {
-            return TipoProceso.PRODUCTOR;
-        }
-        if (t.contains("CONS")) {
-            return TipoProceso.CONSUMIDOR;
-        }
         return TipoProceso.CPU_BOUND;
     }
 
@@ -391,24 +584,30 @@ public final class GestorPersistencia {
         return FormatoPersistencia.JSON;
     }
 
-    private static String escaparCSV(String valor) {
-        if (valor == null) {
-            return "";
+    private static void asegurarDirectorioPadre(File archivo) {
+        File dirPadre = archivo.getParentFile();
+        if (dirPadre != null && !dirPadre.exists()) {
+            dirPadre.mkdirs();
         }
-        if (valor.contains(",") || valor.contains("\"") || valor.contains("\n")) {
-            return "\"" + valor.replace("\"", "\"\"") + "\"";
-        }
-        return valor;
     }
 
-    private static String desescaparCSV(String valor) {
-        if (valor == null) {
+    private static String escaparCSV(String s) {
+        if (s == null) {
             return "";
         }
-        if (valor.startsWith("\"") && valor.endsWith("\"") && valor.length() >= 2) {
-            valor = valor.substring(1, valor.length() - 1);
-            return valor.replace("\"\"", "\"");
+        if (s.contains(",") || s.contains("\"") || s.contains("\n")) {
+            return "\"" + s.replace("\"", "\"\"") + "\"";
         }
-        return valor;
+        return s;
+    }
+
+    private static String desescaparCSV(String s) {
+        if (s == null) {
+            return "";
+        }
+        if (s.startsWith("\"") && s.endsWith("\"") && s.length() >= 2) {
+            return s.substring(1, s.length() - 1).replace("\"\"", "\"");
+        }
+        return s;
     }
 }
