@@ -43,6 +43,7 @@ public class VentanaEstado extends JFrame {
 
     private final Simulador simulador;
     private final PanelComputador[] paneles;
+    private final PanelExploradorArchivos panelArchivos;
     private final Timer temporizador;
 
     private final JLabel lblCiclo = new JLabel("Ciclo: 0");
@@ -146,7 +147,14 @@ public class VentanaEstado extends JFrame {
 
         setLayout(new BorderLayout(6, 6));
         add(barra, BorderLayout.NORTH);
-        add(new JScrollPane(centro), BorderLayout.CENTER);
+        panelArchivos = new PanelExploradorArchivos(simulador);
+        javax.swing.JSplitPane splitCentral = new javax.swing.JSplitPane(
+                javax.swing.JSplitPane.HORIZONTAL_SPLIT,
+                new JScrollPane(centro),
+                panelArchivos);
+        splitCentral.setResizeWeight(0.46);
+        splitCentral.setOneTouchExpandable(true);
+        add(splitCentral, BorderLayout.CENTER);
         add(inferior, BorderLayout.SOUTH);
 
         setDefaultCloseOperation(DO_NOTHING_ON_CLOSE);
@@ -317,6 +325,7 @@ public class VentanaEstado extends JFrame {
             for (PanelComputador panel : paneles) {
                 panel.actualizar();
             }
+            panelArchivos.actualizar();
             LogEventos log = simulador.getLogEventos();
             if (log != null) {
                 estructuras.ListaEnlazada<LogEventos.Evento> ultimos = log.getUltimos(200);
@@ -337,6 +346,7 @@ public class VentanaEstado extends JFrame {
             btnDetener.setEnabled(iniciada && !detenida);
             btnReiniciar.setEnabled(true);
             btnCrear.setEnabled(!detenida && !simulador.isLimiteAlcanzado() && !faltaJson);
+            panelArchivos.setOperacionesHabilitadas(!detenida && !simulador.isLimiteAlcanzado() && !faltaJson);
 
             if (logSb.length() > 0) {
                 String nuevoTexto = logSb.toString();
