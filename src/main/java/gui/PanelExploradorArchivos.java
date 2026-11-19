@@ -1,0 +1,941 @@
+package gui;
+
+import archivos.NodoArchivo;
+import archivos.SistemaArchivos;
+import disco.DiscoSimulado;
+import disco.OperacionRechazadaException;
+import enums.ModoUsuario;
+import enums.TipoOperacionES;
+import estructuras.Iterador;
+import estructuras.ListaEnlazada;
+import java.awt.BorderLayout;
+import java.awt.Color;
+import java.awt.Component;
+import java.awt.Dimension;
+import java.awt.FlowLayout;
+import java.awt.Font;
+import java.awt.GridBagConstraints;
+import java.awt.GridBagLayout;
+import java.awt.GridLayout;
+import java.awt.Insets;
+import java.util.Enumeration;
+import javax.swing.BorderFactory;
+import javax.swing.ButtonGroup;
+import javax.swing.Icon;
+import javax.swing.JButton;
+import javax.swing.JComboBox;
+import javax.swing.JLabel;
+import javax.swing.JOptionPane;
+import javax.swing.JPanel;
+import javax.swing.JRadioButton;
+import javax.swing.JScrollPane;
+import javax.swing.JSpinner;
+import javax.swing.JSplitPane;
+import javax.swing.JTable;
+import javax.swing.JTextField;
+import javax.swing.JTree;
+import javax.swing.ListSelectionModel;
+import javax.swing.SpinnerNumberModel;
+import javax.swing.SwingConstants;
+import javax.swing.UIManager;
+import javax.swing.text.NumberFormatter;
+import javax.swing.tree.DefaultMutableTreeNode;
+import javax.swing.tree.DefaultTreeCellRenderer;
+import javax.swing.tree.DefaultTreeModel;
+import javax.swing.tree.TreePath;
+import javax.swing.tree.TreeSelectionModel;
+import modelo.PCB;
+import nucleo.Computador;
+import simulacion.Simulador;
+
+/**
+ * Panel integrado de Gestión de Archivos y Permisos de ÁvilaOS (Vista 2):
+ * <ul>
+ *   <li>Selector de modo {@link ModoUsuario#ADMINISTRADOR} / {@link ModoUsuario#USUARIO} y usuario activo.</li>
+ *   <li>Árbol jerárquico ({@link JTree}) conectado en tiempo real al {@link SistemaArchivos}.</li>
+ *   <li>Panel de detalles del archivo o directorio seleccionado (incluyendo cadena de bloques).</li>
+ *   <li>Tabla de asignación de archivos ({@link JTable}) en tiempo real con el color propio en disco.</li>
+ *   <li>Acciones CRUD con validaciones de permisos que encolan procesos de E/S en el {@link Simulador}.</li>
+ * </ul>
+ */
+public class PanelExploradorArchivos extends JPanel {
+
+    private static final Color COLOR_ADMIN = new Color(25, 110, 65);
+    private static final Color COLOR_USUARIO = new Color(175, 95, 10);
+
+    private final Simulador simulador;
+
+    private final JComboBox<ModoUsuario> comboModo = new JComboBox<>(ModoUsuario.values());
+    private final JTextField txtUsuario = new JTextField("admin", 10);
+    private final JLabel lblModoInsignia = new JLabel();
+
+    private final JButton btnCrear = new JButton("Crear…");
+    private final JButton btnLeer = new JButton("Leer");
+    private final JButton btnRenombrar = new JButton("Renombrar…");
+    private final JButton btnEliminar = new JButton("Eliminar");
+
+    private final DefaultMutableTreeNode nodoRaizVacio =
+            new DefaultMutableTreeNode("Sin sistema de archivos cargado");
+    private final DefaultTreeModel modeloArbol = new DefaultTreeModel(nodoRaizVacio);
+    private final JTree arbolArchivos = new JTree(modeloArbol);
+
+    private final ModeloTablaArchivos modeloTabla = new ModeloTablaArchivos();
+    private final JTable tablaArchivos = new JTable(modeloTabla);
+
+    // Campos de detalle del elemento seleccionado
+    private final JLabel lblDetNombre = new JLabel("-");
+    private final JLabel lblDetRuta = new JLabel("-");
+    private final JLabel lblDetTipo = new JLabel("-");
+    private final JLabel lblDetDueno = new JLabel("-");
+    private final JLabel lblDetPermiso = new JLabel("-");
+    private final JLabel lblDetCreador = new JLabel("-");
+    private final JLabel lblDetInicio = new JLabel("-");
+    private final JLabel lblDetTamano = new JLabel("-");
+    private final JLabel lblDetColor = new JLabel("-");
+    private final JLabel lblDetCadena = new JLabel("-");
+
+    private final JLabel lblEstadoBarra = new JLabel("Listo.");
+
+    private String firmaUltimaVista = "";
+    private String rutaSeleccionadaActual = "/";
+    private boolean sincronizandoSeleccion = false;
+    private boolean operacionesHabilitadas = true;
+    private String mensajeUltimaAccion = "";
+
+    public PanelExploradorArchivos(Simulador simulador) {
+        this.simulador = simulador;
+        construirInterfaz();
+        configurarEventos();
+        actualizarEstadoModoUsuario();
+        actualizar();
+    }
+
+    private void construirInterfaz() {
+        setLayout(new BorderLayout(6, 6));
+        setBorder(BorderFactory.createTitledBorder("Sistema de Archivos y Asignación en Disco"));
+
+        // --- Barra superior: Selector de Modo + CRUD ---
+        JPanel barraSuperior = new JPanel(new GridLayout(2, 1, 0, 4));
+
+        JPanel filaModo = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 2));
+        filaModo.add(new JLabel("Modo:"));
+        filaModo.add(comboModo);
+        filaModo.add(new JLabel("Usuario activo:"));
+        filaModo.add(txtUsuario);
+        lblModoInsignia.setFont(lblModoInsignia.getFont().deriveFont(Font.BOLD, 11f));
+        filaModo.add(lblModoInsignia);
+
+        JPanel filaCrud = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 2));
+        btnCrear.setToolTipText("Crear un nuevo archivo o directorio mediante proceso de E/S");
+        btnLeer.setToolTipText("Leer el archivo seleccionado mediante proceso de E/S");
+        btnRenombrar.setToolTipText("Renombrar el archivo o directorio seleccionado");
+        btnEliminar.setToolTipText("Eliminar archivo o directorio (recursivo para directorios)");
+        filaCrud.add(btnCrear);
+        filaCrud.add(btnLeer);
+        filaCrud.add(btnRenombrar);
+        filaCrud.add(btnEliminar);
+
+        barraSuperior.add(filaModo);
+        barraSuperior.add(filaCrud);
+
+        // --- JTree jerárquico ---
+        arbolArchivos.getSelectionModel().setSelectionMode(TreeSelectionModel.SINGLE_TREE_SELECTION);
+        arbolArchivos.setCellRenderer(new RenderizadorArbolArchivos());
+        arbolArchivos.setShowsRootHandles(true);
+        JScrollPane scrollArbol = new JScrollPane(arbolArchivos);
+        scrollArbol.setBorder(BorderFactory.createTitledBorder("Jerarquía de archivos (JTree)"));
+        scrollArbol.setPreferredSize(new Dimension(250, 220));
+
+        // --- Panel de detalles ---
+        JPanel panelDetalles = crearPanelDetalles();
+        panelDetalles.setPreferredSize(new Dimension(250, 220));
+
+        JSplitPane splitSuperior = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, scrollArbol, panelDetalles);
+        splitSuperior.setResizeWeight(0.52);
+
+        // --- JTable de asignación de archivos ---
+        tablaArchivos.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+        tablaArchivos.setRowHeight(22);
+        tablaArchivos.setAutoCreateRowSorter(false);
+        tablaArchivos.getTableHeader().setReorderingAllowed(false);
+        tablaArchivos.getColumnModel().getColumn(0).setPreferredWidth(52);
+        tablaArchivos.getColumnModel().getColumn(0).setMaxWidth(65);
+        tablaArchivos.getColumnModel().getColumn(0).setCellRenderer(new ModeloTablaArchivos.RenderizadorColor());
+        tablaArchivos.getColumnModel().getColumn(1).setPreferredWidth(190);
+        tablaArchivos.getColumnModel().getColumn(2).setPreferredWidth(68);
+        tablaArchivos.getColumnModel().getColumn(3).setPreferredWidth(92);
+        tablaArchivos.getColumnModel().getColumn(4).setPreferredWidth(75);
+        tablaArchivos.getColumnModel().getColumn(5).setPreferredWidth(78);
+
+        JScrollPane scrollTabla = new JScrollPane(tablaArchivos);
+        scrollTabla.setBorder(BorderFactory.createTitledBorder("Tabla de asignación de archivos en tiempo real"));
+        scrollTabla.setPreferredSize(new Dimension(480, 190));
+
+        JSplitPane splitPrincipal = new JSplitPane(JSplitPane.VERTICAL_SPLIT, splitSuperior, scrollTabla);
+        splitPrincipal.setResizeWeight(0.54);
+
+        lblEstadoBarra.setBorder(BorderFactory.createEmptyBorder(2, 6, 2, 6));
+        lblEstadoBarra.setFont(lblEstadoBarra.getFont().deriveFont(Font.PLAIN, 11.5f));
+
+        add(barraSuperior, BorderLayout.NORTH);
+        add(splitPrincipal, BorderLayout.CENTER);
+        add(lblEstadoBarra, BorderLayout.SOUTH);
+    }
+
+    private JPanel crearPanelDetalles() {
+        JPanel panel = new JPanel(new GridBagLayout());
+        panel.setBorder(BorderFactory.createTitledBorder("Detalles de la selección"));
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.insets = new Insets(2, 6, 2, 6);
+        gbc.anchor = GridBagConstraints.WEST;
+
+        String[] etiquetas = {
+            "Nombre:", "Ruta:", "Tipo:", "Dueño:", "Permisos:",
+            "Creador:", "Primer bloque:", "Tamaño:", "Color:", "Bloques:"
+        };
+        JLabel[] valores = {
+            lblDetNombre, lblDetRuta, lblDetTipo, lblDetDueno, lblDetPermiso,
+            lblDetCreador, lblDetInicio, lblDetTamano, lblDetColor, lblDetCadena
+        };
+
+        Font baseFont = lblDetNombre.getFont();
+        Font fuenteNegrita = baseFont.deriveFont(Font.BOLD, 11.5f);
+        Font fuenteValor = baseFont.deriveFont(Font.PLAIN, 11.5f);
+
+        for (int i = 0; i < etiquetas.length; i++) {
+            gbc.gridx = 0;
+            gbc.gridy = i;
+            gbc.weightx = 0.0;
+            gbc.fill = GridBagConstraints.NONE;
+            JLabel lblEtiq = new JLabel(etiquetas[i]);
+            lblEtiq.setFont(fuenteNegrita);
+            panel.add(lblEtiq, gbc);
+
+            gbc.gridx = 1;
+            gbc.weightx = 1.0;
+            gbc.fill = GridBagConstraints.HORIZONTAL;
+            valores[i].setFont(fuenteValor);
+            panel.add(valores[i], gbc);
+        }
+
+        // Relleno inferior para alinear arriba
+        gbc.gridx = 0;
+        gbc.gridy = etiquetas.length;
+        gbc.weighty = 1.0;
+        panel.add(new JLabel(), gbc);
+
+        return new JScrollPane(panel).getViewport().getView() == panel ? wrapDetallesScroll(panel) : panel;
+    }
+
+    private static JPanel wrapDetallesScroll(JPanel interno) {
+        JPanel contenedor = new JPanel(new BorderLayout());
+        JScrollPane sp = new JScrollPane(interno);
+        sp.setBorder(null);
+        contenedor.add(sp, BorderLayout.CENTER);
+        return contenedor;
+    }
+
+    private void configurarEventos() {
+        comboModo.addActionListener(e -> actualizarEstadoModoUsuario());
+
+        arbolArchivos.addTreeSelectionListener(e -> {
+            if (sincronizandoSeleccion) {
+                return;
+            }
+            NodoArchivo seleccionado = obtenerNodoSeleccionadoArbol();
+            if (seleccionado != null) {
+                rutaSeleccionadaActual = seleccionado.getRuta();
+                mostrarDetalles(seleccionado);
+                sincronizarFilaTablaConRuta(seleccionado.getRuta());
+            } else {
+                limpiarDetalles();
+            }
+        });
+
+        tablaArchivos.getSelectionModel().addListSelectionListener(e -> {
+            if (e.getValueIsAdjusting() || sincronizandoSeleccion) {
+                return;
+            }
+            int fila = tablaArchivos.getSelectedRow();
+            if (fila >= 0) {
+                NodoArchivo nodo = modeloTabla.obtenerEnFila(fila);
+                if (nodo != null) {
+                    rutaSeleccionadaActual = nodo.getRuta();
+                    seleccionarRutaEnArbol(nodo.getRuta());
+                    mostrarDetalles(nodo);
+                }
+            }
+        });
+
+        btnCrear.addActionListener(e -> accionCrear());
+        btnLeer.addActionListener(e -> accionLeer());
+        btnRenombrar.addActionListener(e -> accionRenombrar());
+        btnEliminar.addActionListener(e -> accionEliminar());
+    }
+
+    private void actualizarEstadoModoUsuario() {
+        ModoUsuario modo = getModoSeleccionado();
+        if (modo.esAdministrador()) {
+            txtUsuario.setText("admin");
+            txtUsuario.setEditable(false);
+            lblModoInsignia.setText("Acceso completo (crear dirs/archivos, ver y borrar todo)");
+            lblModoInsignia.setForeground(COLOR_ADMIN);
+        } else {
+            if ("admin".equalsIgnoreCase(txtUsuario.getText().trim()) || txtUsuario.getText().trim().isEmpty()) {
+                txtUsuario.setText("user1");
+            }
+            txtUsuario.setEditable(true);
+            lblModoInsignia.setText("Acceso restringido (solo lectura pública o archivos propios)");
+            lblModoInsignia.setForeground(COLOR_USUARIO);
+        }
+    }
+
+    /** Habilita o deshabilita las acciones CRUD (ej. al detener la simulación). */
+    public void setOperacionesHabilitadas(boolean habilitado) {
+        this.operacionesHabilitadas = habilitado;
+    }
+
+    /**
+     * Lee el estado actual del {@link SistemaArchivos} y refresca el árbol, la tabla,
+     * los detalles y el estado de botones cuando ocurren cambios.
+     */
+    public final void actualizar() {
+        SistemaArchivos sa = (simulador != null && simulador.getServicioArchivos() instanceof SistemaArchivos s)
+                ? s : null;
+        DiscoSimulado disco = (simulador != null) ? simulador.getDisco() : null;
+        boolean limiteAlcanzado = (simulador != null && simulador.isLimiteAlcanzado());
+        boolean listoParaOperar = (sa != null && operacionesHabilitadas && !limiteAlcanzado
+                && simulador.getCantidadComputadores() > 0);
+
+        btnCrear.setEnabled(listoParaOperar);
+        btnLeer.setEnabled(listoParaOperar);
+        btnRenombrar.setEnabled(listoParaOperar);
+        btnEliminar.setEnabled(listoParaOperar);
+
+        if (sa == null) {
+            if (!"SIN_FS".equals(firmaUltimaVista)) {
+                firmaUltimaVista = "SIN_FS";
+                modeloArbol.setRoot(nodoRaizVacio);
+                modeloTabla.actualizarFilas(new ListaEnlazada<>());
+                limpiarDetalles();
+            }
+            lblEstadoBarra.setText("Sin sistema de archivos cargado: carga ambos JSON en 'Cargar JSON / Config…'.");
+            return;
+        }
+
+        NodoArchivo copiaRaiz = sa.obtenerCopiaArbol();
+        ListaEnlazada<NodoArchivo> archivos = sa.listarTodosLosArchivos();
+        int libres = (disco != null) ? disco.getBloquesLibresDatos() : 0;
+        String firmaNueva = construirFirma(copiaRaiz, archivos, libres);
+
+        if (!firmaNueva.equals(firmaUltimaVista)) {
+            firmaUltimaVista = firmaNueva;
+            reconstruirArbolPreservandoEstado(copiaRaiz);
+            modeloTabla.actualizarFilas(archivos);
+            sincronizarFilaTablaConRuta(rutaSeleccionadaActual);
+            NodoArchivo actual = sa.buscarPorRuta(rutaSeleccionadaActual);
+            if (actual != null) {
+                mostrarDetalles(actual);
+            } else {
+                rutaSeleccionadaActual = "/";
+                seleccionarRutaEnArbol("/");
+                mostrarDetalles(copiaRaiz);
+            }
+        }
+
+        int dirs = sa.getCantidadDirectorios();
+        String resumen = String.format("Directorios: %d  |  Archivos: %d  |  Bloques libres: %d",
+                dirs, archivos.getTamano(), libres);
+        if (!mensajeUltimaAccion.isEmpty()) {
+            resumen += "  |  " + mensajeUltimaAccion;
+        }
+        lblEstadoBarra.setText(resumen);
+    }
+
+    private String construirFirma(NodoArchivo raiz, ListaEnlazada<NodoArchivo> archivos, int libres) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("L=").append(libres).append(';');
+        anexarFirmaNodo(raiz, sb);
+        sb.append("|F=").append(archivos.getTamano());
+        return sb.toString();
+    }
+
+    private void anexarFirmaNodo(NodoArchivo nodo, StringBuilder sb) {
+        if (nodo == null) {
+            return;
+        }
+        sb.append(nodo.getRuta()).append('#').append(nodo.getTipo().name())
+                .append('#').append(nodo.getTamanoBloques())
+                .append('#').append(nodo.getPrimerBloque())
+                .append('#').append(nodo.getDueno())
+                .append('#').append(nodo.getPermiso() != null ? nodo.getPermiso().name() : "")
+                .append('#').append(nodo.getColorHex())
+                .append(';');
+        Iterador<NodoArchivo> it = nodo.iteradorHijos();
+        while (it.haySiguiente()) {
+            anexarFirmaNodo(it.siguiente(), sb);
+        }
+    }
+
+    private void reconstruirArbolPreservandoEstado(NodoArchivo raizModelo) {
+        ListaEnlazada<String> rutasExpandidas = recolectarRutasExpandidas();
+        sincronizandoSeleccion = true;
+        try {
+            DefaultMutableTreeNode nuevoRoot = construirNodoSwing(raizModelo);
+            modeloArbol.setRoot(nuevoRoot);
+            expandirPorDefectoYGuardadas(nuevoRoot, rutasExpandidas);
+            seleccionarRutaEnArbol(rutaSeleccionadaActual);
+        } finally {
+            sincronizandoSeleccion = false;
+        }
+    }
+
+    private DefaultMutableTreeNode construirNodoSwing(NodoArchivo nodoArchivo) {
+        DefaultMutableTreeNode treeNode = new DefaultMutableTreeNode(nodoArchivo);
+        Iterador<NodoArchivo> it = nodoArchivo.iteradorHijos();
+        while (it.haySiguiente()) {
+            treeNode.add(construirNodoSwing(it.siguiente()));
+        }
+        return treeNode;
+    }
+
+    private ListaEnlazada<String> recolectarRutasExpandidas() {
+        ListaEnlazada<String> rutas = new ListaEnlazada<>();
+        Object rootObj = modeloArbol.getRoot();
+        if (!(rootObj instanceof DefaultMutableTreeNode root)) {
+            return rutas;
+        }
+        Enumeration<?> en = arbolArchivos.getExpandedDescendants(new TreePath(root.getPath()));
+        if (en != null) {
+            while (en.hasMoreElements()) {
+                Object next = en.nextElement();
+                if (next instanceof TreePath tp && tp.getLastPathComponent() instanceof DefaultMutableTreeNode dm
+                        && dm.getUserObject() instanceof NodoArchivo na) {
+                    rutas.agregar(na.getRuta());
+                }
+            }
+        }
+        return rutas;
+    }
+
+    private void expandirPorDefectoYGuardadas(DefaultMutableTreeNode root, ListaEnlazada<String> guardadas) {
+        arbolArchivos.expandPath(new TreePath(root.getPath()));
+        if (guardadas.estaVacia()) {
+            // Al inicio expande los directorios de primer nivel para facilitar la exploración
+            for (int i = 0; i < root.getChildCount(); i++) {
+                DefaultMutableTreeNode hijo = (DefaultMutableTreeNode) root.getChildAt(i);
+                arbolArchivos.expandPath(new TreePath(hijo.getPath()));
+            }
+            return;
+        }
+        expandirRecursivoSiEsta(root, guardadas);
+    }
+
+    private void expandirRecursivoSiEsta(DefaultMutableTreeNode nodo, ListaEnlazada<String> rutas) {
+        if (nodo.getUserObject() instanceof NodoArchivo na && contieneRuta(rutas, na.getRuta())) {
+            arbolArchivos.expandPath(new TreePath(nodo.getPath()));
+        }
+        for (int i = 0; i < nodo.getChildCount(); i++) {
+            expandirRecursivoSiEsta((DefaultMutableTreeNode) nodo.getChildAt(i), rutas);
+        }
+    }
+
+    private static boolean contieneRuta(ListaEnlazada<String> rutas, String buscada) {
+        Iterador<String> it = rutas.iterador();
+        while (it.haySiguiente()) {
+            if (buscada.equals(it.siguiente())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void seleccionarRutaEnArbol(String rutaObjetivo) {
+        if (rutaObjetivo == null || !(modeloArbol.getRoot() instanceof DefaultMutableTreeNode root)) {
+            return;
+        }
+        DefaultMutableTreeNode encontrado = buscarEnArbolSwing(root, rutaObjetivo);
+        if (encontrado != null) {
+            sincronizandoSeleccion = true;
+            try {
+                TreePath tp = new TreePath(encontrado.getPath());
+                arbolArchivos.setSelectionPath(tp);
+                arbolArchivos.scrollPathToVisible(tp);
+            } finally {
+                sincronizandoSeleccion = false;
+            }
+        }
+    }
+
+    private DefaultMutableTreeNode buscarEnArbolSwing(DefaultMutableTreeNode actual, String rutaObjetivo) {
+        if (actual.getUserObject() instanceof NodoArchivo na && rutaObjetivo.equals(na.getRuta())) {
+            return actual;
+        }
+        for (int i = 0; i < actual.getChildCount(); i++) {
+            DefaultMutableTreeNode res = buscarEnArbolSwing((DefaultMutableTreeNode) actual.getChildAt(i), rutaObjetivo);
+            if (res != null) {
+                return res;
+            }
+        }
+        return null;
+    }
+
+    private void sincronizarFilaTablaConRuta(String ruta) {
+        int fila = modeloTabla.buscarFilaPorRuta(ruta);
+        sincronizandoSeleccion = true;
+        try {
+            if (fila >= 0) {
+                tablaArchivos.setRowSelectionInterval(fila, fila);
+            } else {
+                tablaArchivos.clearSelection();
+            }
+        } finally {
+            sincronizandoSeleccion = false;
+        }
+    }
+
+    private NodoArchivo obtenerNodoSeleccionadoArbol() {
+        Object comp = arbolArchivos.getLastSelectedPathComponent();
+        if (comp instanceof DefaultMutableTreeNode dm && dm.getUserObject() instanceof NodoArchivo na) {
+            return na;
+        }
+        return null;
+    }
+
+    private void mostrarDetalles(NodoArchivo nodo) {
+        if (nodo == null) {
+            limpiarDetalles();
+            return;
+        }
+        lblDetNombre.setText(nodo.getNombre());
+        lblDetRuta.setText(nodo.getRuta());
+        lblDetTipo.setText(nodo.esDirectorio() ? "Directorio" : "Archivo regular");
+        lblDetDueno.setText(nodo.getDueno());
+        lblDetPermiso.setText(nodo.getPermiso() != null ? nodo.getPermiso().getEtiqueta() : "-");
+        lblDetCreador.setText(nodo.getProcesoCreador());
+
+        if (nodo.esDirectorio()) {
+            lblDetInicio.setText("N/A");
+            lblDetTamano.setText(nodo.getCantidadHijos() + " entrada(s)");
+            lblDetColor.setIcon(null);
+            lblDetColor.setText("N/A (directorio)");
+            lblDetCadena.setText("N/A");
+            lblDetCadena.setToolTipText(null);
+            return;
+        }
+
+        lblDetInicio.setText(nodo.getPrimerBloque() >= 0 ? String.valueOf(nodo.getPrimerBloque()) : "-");
+        lblDetTamano.setText(nodo.getTamanoBloques() + " bloque(s)");
+        Color c = ModeloTablaArchivos.decodificarColor(nodo.getColorHex());
+        lblDetColor.setIcon(ModeloTablaArchivos.crearIconoColor(c, 14, 12));
+        lblDetColor.setText(nodo.getColorHex().isEmpty() ? "Por defecto" : nodo.getColorHex());
+
+        DiscoSimulado disco = (simulador != null) ? simulador.getDisco() : null;
+        if (disco != null && nodo.getPrimerBloque() >= 0) {
+            ListaEnlazada<Integer> cadena = disco.obtenerCadenaBloques(nodo.getPrimerBloque());
+            String textoCompleto = formatearCadena(cadena, false);
+            lblDetCadena.setText(formatearCadena(cadena, true));
+            lblDetCadena.setToolTipText(textoCompleto);
+        } else {
+            lblDetCadena.setText("-");
+            lblDetCadena.setToolTipText(null);
+        }
+    }
+
+    private void limpiarDetalles() {
+        JLabel[] todos = {
+            lblDetNombre, lblDetRuta, lblDetTipo, lblDetDueno, lblDetPermiso,
+            lblDetCreador, lblDetInicio, lblDetTamano, lblDetColor, lblDetCadena
+        };
+        for (int i = 0; i < todos.length; i++) {
+            todos[i].setText("-");
+            todos[i].setIcon(null);
+            todos[i].setToolTipText(null);
+        }
+    }
+
+    private static String formatearCadena(ListaEnlazada<Integer> cadena, boolean resumida) {
+        if (cadena == null || cadena.estaVacia()) {
+            return "-";
+        }
+        int total = cadena.getTamano();
+        StringBuilder sb = new StringBuilder();
+        if (!resumida || total <= 8) {
+            for (int i = 0; i < total; i++) {
+                if (i > 0) {
+                    sb.append(" → ");
+                }
+                sb.append(cadena.obtener(i));
+            }
+            return sb.toString();
+        }
+        for (int i = 0; i < 4; i++) {
+            sb.append(cadena.obtener(i)).append(" → ");
+        }
+        sb.append("… → ").append(cadena.obtener(total - 1));
+        return sb.toString();
+    }
+
+    // =========================================================================
+    // ACCIONES CRUD Y VALIDACIONES DE MODO ADMINISTRADOR / USUARIO
+    // =========================================================================
+
+    private void accionCrear() {
+        SistemaArchivos sa = obtenerSistemaArchivosActivo();
+        if (sa == null) {
+            return;
+        }
+        ModoUsuario modo = getModoSeleccionado();
+        String usuario = getUsuarioActivo();
+
+        NodoArchivo sel = obtenerNodoSeleccionadoArbol();
+        String carpetaBase = "/";
+        if (sel != null) {
+            carpetaBase = sel.esDirectorio() ? sel.getRuta() : obtenerPadreVisual(sel.getRuta());
+        }
+        String rutaSugerida = "/".equals(carpetaBase) ? "/nuevo.txt" : carpetaBase + "/nuevo.txt";
+
+        JTextField campoRuta = new JTextField(rutaSugerida, 22);
+        JRadioButton rbArchivo = new JRadioButton("Archivo", true);
+        JRadioButton rbDirectorio = new JRadioButton("Directorio", false);
+        ButtonGroup bg = new ButtonGroup();
+        bg.add(rbArchivo);
+        bg.add(rbDirectorio);
+        if (!modo.esAdministrador()) {
+            rbDirectorio.setToolTipText("En modo Usuario solo el Administrador puede crear directorios");
+        }
+
+        JSpinner spinBloques = new JSpinner(new SpinnerNumberModel(4, 1, 10000, 1));
+        if (spinBloques.getEditor() instanceof JSpinner.NumberEditor ne
+                && ne.getTextField().getFormatter() instanceof NumberFormatter nf) {
+            nf.setAllowsInvalid(false);
+            nf.setCommitsOnValidEdit(true);
+        }
+        rbArchivo.addActionListener(e -> spinBloques.setEnabled(true));
+        rbDirectorio.addActionListener(e -> spinBloques.setEnabled(false));
+
+        JPanel form = new JPanel(new GridLayout(0, 2, 6, 6));
+        form.add(new JLabel("Modo / Usuario:"));
+        form.add(new JLabel(modo.getEtiqueta() + " (" + usuario + ")"));
+        form.add(new JLabel("Ruta completa:"));
+        form.add(campoRuta);
+        form.add(new JLabel("Tipo de entrada:"));
+        JPanel pTipo = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
+        pTipo.add(rbArchivo);
+        pTipo.add(rbDirectorio);
+        form.add(pTipo);
+        form.add(new JLabel("Tamaño (bloques):"));
+        form.add(spinBloques);
+
+        int res = JOptionPane.showConfirmDialog(this, form, "Crear archivo o directorio (E/S)",
+                JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE);
+        if (res != JOptionPane.OK_OPTION) {
+            return;
+        }
+
+        boolean esDir = rbDirectorio.isSelected();
+        int tam = esDir ? 0 : (Integer) spinBloques.getValue();
+        String ruta = campoRuta.getText().trim();
+
+        String error = validarOperacionGUI(sa, TipoOperacionES.CREAR, ruta, "", tam, modo, usuario, esDir);
+        if (error != null) {
+            mostrarErrorValidacion(error);
+            return;
+        }
+        encolarOperacion(TipoOperacionES.CREAR, ruta, "", tam, modo, usuario);
+    }
+
+    private void accionLeer() {
+        SistemaArchivos sa = obtenerSistemaArchivosActivo();
+        NodoArchivo sel = obtenerObjetivoSeleccionado();
+        if (sa == null || sel == null) {
+            return;
+        }
+        ModoUsuario modo = getModoSeleccionado();
+        String usuario = getUsuarioActivo();
+
+        String error = validarOperacionGUI(sa, TipoOperacionES.LEER, sel.getRuta(), "", 0, modo, usuario, false);
+        if (error != null) {
+            mostrarErrorValidacion(error);
+            return;
+        }
+        encolarOperacion(TipoOperacionES.LEER, sel.getRuta(), "", 0, modo, usuario);
+    }
+
+    private void accionRenombrar() {
+        SistemaArchivos sa = obtenerSistemaArchivosActivo();
+        NodoArchivo sel = obtenerObjetivoSeleccionado();
+        if (sa == null || sel == null) {
+            return;
+        }
+        ModoUsuario modo = getModoSeleccionado();
+        String usuario = getUsuarioActivo();
+
+        String nuevoNombre = JOptionPane.showInputDialog(this,
+                "Nuevo nombre para '" + sel.getRuta() + "':", sel.getNombre());
+        if (nuevoNombre == null) {
+            return;
+        }
+
+        String error = validarOperacionGUI(sa, TipoOperacionES.ACTUALIZAR, sel.getRuta(),
+                nuevoNombre.trim(), 0, modo, usuario, sel.esDirectorio());
+        if (error != null) {
+            mostrarErrorValidacion(error);
+            return;
+        }
+        encolarOperacion(TipoOperacionES.ACTUALIZAR, sel.getRuta(), nuevoNombre.trim(), 0, modo, usuario);
+    }
+
+    private void accionEliminar() {
+        SistemaArchivos sa = obtenerSistemaArchivosActivo();
+        NodoArchivo sel = obtenerObjetivoSeleccionado();
+        if (sa == null || sel == null) {
+            return;
+        }
+        ModoUsuario modo = getModoSeleccionado();
+        String usuario = getUsuarioActivo();
+
+        String error = validarOperacionGUI(sa, TipoOperacionES.ELIMINAR, sel.getRuta(),
+                "", 0, modo, usuario, sel.esDirectorio());
+        if (error != null) {
+            mostrarErrorValidacion(error);
+            return;
+        }
+
+        String tipoDesc = sel.esDirectorio()
+                ? "el directorio '" + sel.getRuta() + "' y todo su contenido recursivamente"
+                : "el archivo '" + sel.getRuta() + "'";
+        int confirm = JOptionPane.showConfirmDialog(this,
+                "¿Encolar proceso de E/S para eliminar " + tipoDesc + "?",
+                "Confirmar eliminación", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
+        if (confirm != JOptionPane.YES_OPTION) {
+            return;
+        }
+        encolarOperacion(TipoOperacionES.ELIMINAR, sel.getRuta(), "", 0, modo, usuario);
+    }
+
+    private void encolarOperacion(TipoOperacionES op, String ruta, String nuevoNombre, int tamBloques,
+                                  ModoUsuario modo, String usuario) {
+        int idPc = obtenerIdComputadorPrincipal();
+        if (idPc < 0) {
+            mostrarErrorValidacion("No hay ningún computador registrado para ejecutar el proceso de E/S.");
+            return;
+        }
+        try {
+            String nombreProc = "GUI_" + op.getCodigoJson() + "_" + obtenerNombreBaseVisual(ruta);
+            PCB creado = simulador.solicitarOperacionES(
+                    idPc, nombreProc, op, ruta, nuevoNombre, tamBloques, modo, usuario);
+            mensajeUltimaAccion = "Encolado " + creado.getNombre()
+                    + (simulador.estaEnMarcha() ? "" : " (pulsa Iniciar)");
+            actualizar();
+        } catch (RuntimeException ex) {
+            mostrarErrorValidacion(ex.getMessage());
+        }
+    }
+
+    /**
+     * Valida en la GUI tanto sintaxis como permisos de {@link ModoUsuario#ADMINISTRADOR} vs
+     * {@link ModoUsuario#USUARIO} de forma consistente con {@link SistemaArchivos}.
+     *
+     * @return mensaje descriptivo del error si no es válido, o {@code null} si procede.
+     */
+    public static String validarOperacionGUI(SistemaArchivos sa, TipoOperacionES op, String ruta,
+                                             String nuevoNombre, int tamanoBloques,
+                                             ModoUsuario modo, String usuario, boolean esDirectorioCrear) {
+        if (sa == null) {
+            return "No hay un sistema de archivos activo.";
+        }
+        if (usuario == null || usuario.trim().isEmpty()) {
+            return "Debe indicar un nombre de usuario activo válido.";
+        }
+        String rutaNorm;
+        try {
+            rutaNorm = SistemaArchivos.normalizarRuta(ruta);
+        } catch (OperacionRechazadaException ex) {
+            return ex.getMessage();
+        }
+
+        if (op == TipoOperacionES.CREAR) {
+            if ("/".equals(rutaNorm)) {
+                return "No se puede crear la raíz '/'.";
+            }
+            if (sa.buscarPorRuta(rutaNorm) != null) {
+                return "Ya existe una entrada en '" + rutaNorm + "'.";
+            }
+            String padreRuta = obtenerPadreVisual(rutaNorm);
+            NodoArchivo padre = sa.buscarPorRuta(padreRuta);
+            if (padre == null) {
+                return "El directorio padre '" + padreRuta + "' no existe.";
+            }
+            if (!padre.esDirectorio()) {
+                return "La ruta padre '" + padreRuta + "' es un archivo, no un directorio.";
+            }
+            if (!modo.esAdministrador()) {
+                if (esDirectorioCrear) {
+                    return "Permiso denegado: en modo Usuario solo el Administrador puede crear directorios.";
+                }
+                if (!padre.getDueno().equalsIgnoreCase(usuario.trim())) {
+                    return "Permiso denegado: el usuario '" + usuario.trim()
+                            + "' solo puede crear archivos en directorios propios ('"
+                            + padre.getRuta() + "' pertenece a '" + padre.getDueno() + "').";
+                }
+            }
+            if (!esDirectorioCrear) {
+                if (tamanoBloques <= 0) {
+                    return "El archivo debe tener al menos 1 bloque.";
+                }
+                DiscoSimulado d = sa.getDisco();
+                if (d != null && tamanoBloques > d.getBloquesLibresDatos()) {
+                    return "Espacio insuficiente en disco (" + tamanoBloques + " requeridos, "
+                            + d.getBloquesLibresDatos() + " libres).";
+                }
+            }
+            return null;
+        }
+
+        if ("/".equals(rutaNorm)) {
+            return "La operación " + op.getEtiqueta() + " no puede aplicarse sobre la raíz '/'.";
+        }
+        NodoArchivo nodo = sa.buscarPorRuta(rutaNorm);
+        if (nodo == null) {
+            return "La ruta '" + rutaNorm + "' no existe.";
+        }
+
+        if (op == TipoOperacionES.LEER) {
+            if (nodo.esDirectorio()) {
+                return "No se puede leer un directorio como archivo ('" + rutaNorm + "').";
+            }
+            if (!modo.esAdministrador() && !nodo.esPublico() && !nodo.getDueno().equalsIgnoreCase(usuario.trim())) {
+                return "Acceso denegado: el archivo '" + rutaNorm + "' es privado y pertenece a '"
+                        + nodo.getDueno() + "'.";
+            }
+            return null;
+        }
+
+        if (op == TipoOperacionES.ACTUALIZAR || op == TipoOperacionES.ELIMINAR) {
+            if (!modo.esAdministrador()) {
+                if (nodo.esDirectorio()) {
+                    return "Permiso denegado: en modo Usuario solo el Administrador puede modificar o eliminar directorios.";
+                }
+                if (!nodo.getDueno().equalsIgnoreCase(usuario.trim())) {
+                    return "Permiso denegado: '" + usuario.trim() + "' no puede "
+                            + (op == TipoOperacionES.ELIMINAR ? "eliminar" : "modificar")
+                            + " '" + rutaNorm + "' (dueño: '" + nodo.getDueno() + "').";
+                }
+            }
+            if (op == TipoOperacionES.ACTUALIZAR) {
+                if (nuevoNombre == null || nuevoNombre.trim().isEmpty()) {
+                    return "El nuevo nombre no puede estar vacío.";
+                }
+                if (nuevoNombre.contains("/")) {
+                    return "El nuevo nombre no debe contener '/'.";
+                }
+                String rutaDestino = "/".equals(obtenerPadreVisual(rutaNorm))
+                        ? "/" + nuevoNombre.trim()
+                        : obtenerPadreVisual(rutaNorm) + "/" + nuevoNombre.trim();
+                if (!rutaDestino.equals(rutaNorm) && sa.buscarPorRuta(rutaDestino) != null) {
+                    return "Ya existe una entrada llamada '" + nuevoNombre.trim() + "' en esa carpeta.";
+                }
+            }
+            return null;
+        }
+        return null;
+    }
+
+    private SistemaArchivos obtenerSistemaArchivosActivo() {
+        if (simulador != null && simulador.getServicioArchivos() instanceof SistemaArchivos sa) {
+            return sa;
+        }
+        mostrarErrorValidacion("Carga primero ambos archivos JSON en 'Cargar JSON / Config…'.");
+        return null;
+    }
+
+    private NodoArchivo obtenerObjetivoSeleccionado() {
+        NodoArchivo sel = obtenerNodoSeleccionadoArbol();
+        if (sel == null && tablaArchivos.getSelectedRow() >= 0) {
+            sel = modeloTabla.obtenerEnFila(tablaArchivos.getSelectedRow());
+        }
+        if (sel == null) {
+            mostrarErrorValidacion("Selecciona primero un archivo o directorio en el árbol o en la tabla.");
+            return null;
+        }
+        return sel;
+    }
+
+    private int obtenerIdComputadorPrincipal() {
+        if (simulador == null) {
+            return -1;
+        }
+        Iterador<Computador> it = simulador.iteradorComputadores();
+        return it.haySiguiente() ? it.siguiente().getId() : -1;
+    }
+
+    public ModoUsuario getModoSeleccionado() {
+        Object sel = comboModo.getSelectedItem();
+        return (sel instanceof ModoUsuario m) ? m : ModoUsuario.ADMINISTRADOR;
+    }
+
+    public String getUsuarioActivo() {
+        String u = txtUsuario.getText().trim();
+        return u.isEmpty() ? (getModoSeleccionado().esAdministrador() ? "admin" : "") : u;
+    }
+
+    public JTree getArbolArchivos() {
+        return arbolArchivos;
+    }
+
+    public JTable getTablaArchivos() {
+        return tablaArchivos;
+    }
+
+    public JComboBox<ModoUsuario> getComboModo() {
+        return comboModo;
+    }
+
+    public JTextField getTxtUsuario() {
+        return txtUsuario;
+    }
+
+    private void mostrarErrorValidacion(String mensaje) {
+        mensajeUltimaAccion = "Rechazado: " + mensaje;
+        lblEstadoBarra.setText(mensajeUltimaAccion);
+        JOptionPane.showMessageDialog(this, mensaje, "Validación de archivos y permisos", JOptionPane.WARNING_MESSAGE);
+    }
+
+    private static String obtenerPadreVisual(String rutaNorm) {
+        int pos = rutaNorm.lastIndexOf('/');
+        return pos <= 0 ? "/" : rutaNorm.substring(0, pos);
+    }
+
+    private static String obtenerNombreBaseVisual(String rutaNorm) {
+        int pos = rutaNorm.lastIndexOf('/');
+        return pos < 0 ? rutaNorm : rutaNorm.substring(pos + 1);
+    }
+
+    /** Renderizador del árbol con iconos de carpeta y swatch de color por archivo. */
+    private static final class RenderizadorArbolArchivos extends DefaultTreeCellRenderer {
+        private final Icon iconoDir = UIManager.getIcon("FileView.directoryIcon");
+
+        @Override
+        public Component getTreeCellRendererComponent(JTree tree, Object value, boolean sel,
+                                                      boolean expanded, boolean leaf, int row, boolean hasFocus) {
+            super.getTreeCellRendererComponent(tree, value, sel, expanded, leaf, row, hasFocus);
+            if (value instanceof DefaultMutableTreeNode dm && dm.getUserObject() instanceof NodoArchivo na) {
+                if (na.esDirectorio()) {
+                    if (iconoDir != null) {
+                        setIcon(iconoDir);
+                    }
+                    String sufijo = "/".equals(na.getRuta()) ? " (" + na.getDueno() + ")"
+                            : "  [" + na.getCantidadHijos() + ", " + na.getDueno() + "]";
+                    setText(na.getNombre() + sufijo);
+                } else {
+                    Color c = ModeloTablaArchivos.decodificarColor(na.getColorHex());
+                    setIcon(ModeloTablaArchivos.crearIconoColor(c, 12, 12));
+                    String candado = na.esPublico() ? "" : " [Privado]";
+                    setText(na.getNombre() + " [" + na.getTamanoBloques() + " blq]" + candado);
+                }
+            }
+            return this;
+        }
+    }
+}
