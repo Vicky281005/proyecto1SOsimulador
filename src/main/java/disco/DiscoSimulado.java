@@ -22,6 +22,10 @@ import simulacion.LogEventos;
 public class DiscoSimulado implements ComponenteReloj {
 
     public static final int TOTAL_BLOQUES_POR_DEFECTO = 200;
+    /** Mínimo de bloques que admite el enunciado para el disco. */
+    public static final int MIN_BLOQUES_DISCO = 100;
+    /** Máximo de bloques que admite el enunciado para el disco. */
+    public static final int MAX_BLOQUES_DISCO = 500;
     public static final int POSICION_CABEZAL_POR_DEFECTO = 50;
     public static final int VELOCIDAD_CABEZAL_POR_DEFECTO = 10;
 
