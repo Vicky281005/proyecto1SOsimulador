@@ -25,7 +25,7 @@ import simulacion.Simulador;
 /**
  * Ventana de métricas de rendimiento: throughput, tiempo de respuesta promedio,
  * porcentaje de deadlines cumplidos, equidad, tiempo bloqueado y producidos/consumidos
- * por buffer, globales y por computador.
+ * globales, por computador y del disco.
  *
  * <p>Solo observa: se refresca con un {@link javax.swing.Timer} y lee el estado dentro
  * de {@link Simulador#leerEstado(Runnable)}, igual que el resto de la Vista 2. El botón
