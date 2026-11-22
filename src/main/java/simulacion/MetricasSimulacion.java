@@ -1,6 +1,8 @@
 package simulacion;
 
+import disco.DiscoSimulado;
 import enums.EstadoProceso;
+import enums.PoliticaDisco;
 import estructuras.Iterador;
 import estructuras.ListaEnlazada;
 import modelo.PCB;
@@ -118,12 +120,48 @@ public final class MetricasSimulacion {
     private final double equidad;
     private final PorComputador[] computadores;
     private final PorBuffer[] buffers;
+    private final MetricasDisco disco;
+
+    /** Foto de las estadísticas del disco simulado (o "sin disco" si el simulador no tiene uno). */
+    public static final class MetricasDisco {
+        public final boolean hayDisco;
+        public final PoliticaDisco politica;
+        public final long desplazamientoTotal;
+        public final long solicitudesAtendidas;
+        public final double esperaPromedio;
+        /** Solicitudes atendidas por cada política, en el orden de {@link PoliticaDisco#values()}. */
+        public final long[] porPolitica;
+
+        MetricasDisco(boolean hayDisco, PoliticaDisco politica, long desplazamientoTotal,
+                      long solicitudesAtendidas, double esperaPromedio, long[] porPolitica) {
+            this.hayDisco = hayDisco;
+            this.politica = politica;
+            this.desplazamientoTotal = desplazamientoTotal;
+            this.solicitudesAtendidas = solicitudesAtendidas;
+            this.esperaPromedio = esperaPromedio;
+            this.porPolitica = porPolitica;
+        }
+
+        static MetricasDisco de(DiscoSimulado d) {
+            long[] pp = new long[PoliticaDisco.values().length];
+            if (d == null) {
+                return new MetricasDisco(false, null, 0, 0, 0.0, pp);
+            }
+            for (PoliticaDisco p : PoliticaDisco.values()) {
+                pp[p.ordinal()] = d.getSolicitudesAtendidas(p);
+            }
+            return new MetricasDisco(true, d.getPoliticaActual(), d.getDesplazamientoTotal(),
+                    d.getTotalSolicitudesAtendidas(), d.getTiempoEsperaPromedio(), pp);
+        }
+    }
 
     private MetricasSimulacion(long ciclos, int procesos, int terminados, int completados, int terminadosPorDeadline,
                                int deadlinesCumplidos, int bloqueadosAhora, int suspendidosAhora,
                                int totalSuspensiones, int totalReactivaciones, double throughput,
                                double respuestaPromedio, double bloqueadoPromedio, long bloqueadoMaximo,
-                               double equidad, PorComputador[] computadores, PorBuffer[] buffers) {
+                               double equidad, PorComputador[] computadores, PorBuffer[] buffers,
+                               MetricasDisco disco) {
+        this.disco = disco;
         this.ciclos = ciclos;
         this.procesos = procesos;
         this.terminados = terminados;
@@ -242,7 +280,8 @@ public final class MetricasSimulacion {
 
         return new MetricasSimulacion(ciclos, total, terminados, completados, porDeadline, cumplidos,
                 bloqueadosAhora, suspendidosAhora, totalSuspensiones, totalReactivaciones,
-                throughput, respuesta, bloqueado, maxBloqueado, equidad, porPc, porBuffer);
+                throughput, respuesta, bloqueado, maxBloqueado, equidad, porPc, porBuffer,
+                MetricasDisco.de(simulador.getDisco()));
     }
 
     private static <T> int contar(Iterador<T> it) {
@@ -402,6 +441,11 @@ public final class MetricasSimulacion {
         return computadores[indice];
     }
 
+    /** Estadísticas del disco (nunca nulo; {@code hayDisco} indica si el simulador tiene uno). */
+    public MetricasDisco getDisco() {
+        return disco;
+    }
+
     public int getCantidadBuffers() {
         return buffers.length;
     }
@@ -452,6 +496,21 @@ public final class MetricasSimulacion {
             PorComputador c = computadores[i];
             sb.append(String.format("   %-6s %13d %13d %12d %14d%n", c.nombre, c.suspensiones, c.reactivaciones,
                     c.listosSuspendidos, c.bloqueadosSuspendidos));
+        }
+
+        sb.append("\n Disco y planificación de E/S:\n");
+        if (!disco.hayDisco) {
+            sb.append("   (sin disco configurado)\n");
+        } else {
+            sb.append(String.format("   Política actual: %s%n", disco.politica.getCodigoJson()));
+            sb.append(String.format("   Desplazamiento total del cabezal : %d bloques%n", disco.desplazamientoTotal));
+            sb.append(String.format("   Solicitudes atendidas            : %d%n", disco.solicitudesAtendidas));
+            sb.append(String.format("   Espera promedio en cola de disco : %.1f ciclos%n", disco.esperaPromedio));
+            sb.append("   Atendidas por política           :");
+            for (PoliticaDisco p : PoliticaDisco.values()) {
+                sb.append(String.format("  %s=%d", p.getCodigoJson(), disco.porPolitica[p.ordinal()]));
+            }
+            sb.append('\n');
         }
 
         sb.append("\n Por buffer:\n");

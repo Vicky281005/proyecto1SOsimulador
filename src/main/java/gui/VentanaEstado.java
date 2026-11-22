@@ -57,6 +57,8 @@ public class VentanaEstado extends JFrame {
     private VentanaCrearProceso ventanaCrear;
     private final JButton btnGrafica = new JButton("Gráfica CPU");
     private VentanaGrafica ventanaGrafica;
+    private final JButton btnGraficaDisco = new JButton("Gráfica disco");
+    private VentanaGraficaDisco ventanaGraficaDisco;
     private final JButton btnMetricas = new JButton("Métricas");
     private VentanaMetricas ventanaMetricas;
     private final JButton btnDisco = new JButton("Disco");
@@ -112,6 +114,7 @@ public class VentanaEstado extends JFrame {
         fila1.add(new javax.swing.JSeparator(javax.swing.SwingConstants.VERTICAL));
         fila1.add(btnCrear);
         fila1.add(btnGrafica);
+        fila1.add(btnGraficaDisco);
         fila1.add(btnMetricas);
         fila1.add(btnDisco);
         fila1.add(btnConfiguracion);
@@ -134,6 +137,7 @@ public class VentanaEstado extends JFrame {
         btnReiniciar.addActionListener(e -> reiniciar());
         btnCrear.addActionListener(e -> abrirCrearProceso());
         btnGrafica.addActionListener(e -> abrirGrafica());
+        btnGraficaDisco.addActionListener(e -> abrirGraficaDisco());
         btnMetricas.addActionListener(e -> abrirMetricas());
         btnDisco.addActionListener(e -> abrirDisco());
         btnConfiguracion.addActionListener(e -> abrirConfiguracion());
@@ -209,6 +213,15 @@ public class VentanaEstado extends JFrame {
         ventanaGrafica.toFront();
     }
 
+    /** Abre la gráfica del desplazamiento acumulado del cabezal; reutiliza la misma ventana. */
+    private void abrirGraficaDisco() {
+        if (ventanaGraficaDisco == null) {
+            ventanaGraficaDisco = new VentanaGraficaDisco(this, simulador);
+        }
+        ventanaGraficaDisco.setVisible(true);
+        ventanaGraficaDisco.toFront();
+    }
+
     /** Abre (o trae al frente) la ventana de métricas de rendimiento. */
     private void abrirMetricas() {
         if (ventanaMetricas == null) {
@@ -281,6 +294,10 @@ public class VentanaEstado extends JFrame {
         if (ventanaGrafica != null) {
             ventanaGrafica.dispose();
             ventanaGrafica = null;
+        }
+        if (ventanaGraficaDisco != null) {
+            ventanaGraficaDisco.dispose();
+            ventanaGraficaDisco = null;
         }
         if (ventanaMetricas != null) {
             ventanaMetricas.dispose();
