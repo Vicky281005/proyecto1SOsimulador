@@ -158,8 +158,9 @@ public class ConfigSistemaArchivos {
         }
         int totalBloques = diskConfig.getTotalBlocks();
         int cabezal = diskConfig.getInitialHead();
-        if (totalBloques <= 0) {
-            errores.agregar("'diskConfig.totalBlocks' debe ser mayor que cero (actual: " + totalBloques + ").");
+        if (totalBloques < DiscoSimulado.MIN_BLOQUES_DISCO || totalBloques > DiscoSimulado.MAX_BLOQUES_DISCO) {
+            errores.agregar("'diskConfig.totalBlocks' debe estar entre " + DiscoSimulado.MIN_BLOQUES_DISCO
+                    + " y " + DiscoSimulado.MAX_BLOQUES_DISCO + " bloques (actual: " + totalBloques + ").");
         }
         if (cabezal < 0 || (totalBloques > 0 && cabezal >= totalBloques)) {
             errores.agregar("'diskConfig.initialHead' (" + cabezal
@@ -212,7 +213,7 @@ public class ConfigSistemaArchivos {
                 int cant = e.getBlocks();
                 if (cant <= 0) {
                     errores.agregar("El archivo '" + norm + "' debe ocupar al menos 1 bloque.");
-                } else if (inicio < 0 || (totalBloques > 0 && inicio + cant > totalBloques)) {
+                } else if (inicio < 0 || inicio + cant > totalBloques) {
                     errores.agregar("El archivo '" + norm + "' [" + inicio + ".." + (inicio + cant - 1)
                             + "] excede 'totalBlocks' (" + totalBloques + ").");
                 } else {

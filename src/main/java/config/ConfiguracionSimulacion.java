@@ -110,8 +110,9 @@ public class ConfiguracionSimulacion {
         if (duracionCicloMs <= 0) {
             errores.agregar("La duración del ciclo debe ser mayor que 0 ms (actual: " + duracionCicloMs + ").");
         }
-        if (totalBloquesDisco <= 0) {
-            errores.agregar("El número de bloques del disco debe ser mayor que 0 (actual: " + totalBloquesDisco + ").");
+        if (totalBloquesDisco < DiscoSimulado.MIN_BLOQUES_DISCO || totalBloquesDisco > DiscoSimulado.MAX_BLOQUES_DISCO) {
+            errores.agregar("El número de bloques del disco debe estar entre " + DiscoSimulado.MIN_BLOQUES_DISCO
+                    + " y " + DiscoSimulado.MAX_BLOQUES_DISCO + " (actual: " + totalBloquesDisco + ").");
         }
         if (tamanoSwap < 0) {
             errores.agregar("El tamaño del área de intercambio (swap) no puede ser negativo.");
