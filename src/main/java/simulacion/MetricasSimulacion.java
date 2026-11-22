@@ -7,11 +7,10 @@ import estructuras.Iterador;
 import estructuras.ListaEnlazada;
 import modelo.PCB;
 import nucleo.Computador;
-import sincronizacion.Buffer;
 
 /**
  * Métricas de rendimiento de una simulación de ÁvilaOS, calculadas a partir de lo que
- * ya registran los {@link PCB}, los {@link Buffer} y las CPU.
+ * ya registran los {@link PCB}, las CPU y el disco.
  *
  * <p>Es una <b>foto</b> (snapshot): {@link #calcular(Simulador)} recorre el estado una
  * vez y devuelve un objeto inmutable. Si la simulación está corriendo, hay que llamarlo
@@ -32,8 +31,7 @@ import sincronizacion.Buffer;
  *       J = (Σx)² / (n·Σx²). Vale 1 si todos reciben la misma fracción y baja hacia
  *       1/n cuanto más desigual es el reparto.</li>
  *   <li><b>Tiempo bloqueado</b> = ciclos que el proceso estuvo en la lista de bloqueados
- *       (semáforo, mutex o latencia de red).</li>
- *   <li><b>Producidos / consumidos</b> = elementos insertados / extraídos de cada buffer.</li>
+ *       (E/S, espera de disco o de otro recurso).</li>
  * </ul>
  *
  * <p>Los valores que no se pueden calcular todavía (por ejemplo, el % de deadlines sin
@@ -84,25 +82,6 @@ public final class MetricasSimulacion {
         }
     }
 
-    /** Métricas de un buffer. */
-    public static final class PorBuffer {
-        public final String id;
-        public final int idAnfitrion;
-        public final int capacidad;
-        public final int ocupacion;
-        public final long producidos;
-        public final long consumidos;
-
-        PorBuffer(String id, int idAnfitrion, int capacidad, int ocupacion, long producidos, long consumidos) {
-            this.id = id;
-            this.idAnfitrion = idAnfitrion;
-            this.capacidad = capacidad;
-            this.ocupacion = ocupacion;
-            this.producidos = producidos;
-            this.consumidos = consumidos;
-        }
-    }
-
     private final long ciclos;
     private final int procesos;
     private final int terminados;
@@ -119,7 +98,6 @@ public final class MetricasSimulacion {
     private final long bloqueadoMaximo;
     private final double equidad;
     private final PorComputador[] computadores;
-    private final PorBuffer[] buffers;
     private final MetricasDisco disco;
 
     /** Foto de las estadísticas del disco simulado (o "sin disco" si el simulador no tiene uno). */
@@ -159,7 +137,7 @@ public final class MetricasSimulacion {
                                int deadlinesCumplidos, int bloqueadosAhora, int suspendidosAhora,
                                int totalSuspensiones, int totalReactivaciones, double throughput,
                                double respuestaPromedio, double bloqueadoPromedio, long bloqueadoMaximo,
-                               double equidad, PorComputador[] computadores, PorBuffer[] buffers,
+                               double equidad, PorComputador[] computadores,
                                MetricasDisco disco) {
         this.disco = disco;
         this.ciclos = ciclos;
@@ -178,7 +156,6 @@ public final class MetricasSimulacion {
         this.bloqueadoMaximo = bloqueadoMaximo;
         this.equidad = equidad;
         this.computadores = computadores;
-        this.buffers = buffers;
     }
 
     // ------------------------------------------------------------------ cálculo
@@ -269,28 +246,10 @@ public final class MetricasSimulacion {
         double bloqueado = total > 0 ? (double) sumaBloqueado / total : NO_DISPONIBLE;
         double equidad = nEquidad == 0 ? NO_DISPONIBLE : (sumaX2 == 0 ? 1.0 : (sumaX * sumaX) / (nEquidad * sumaX2));
 
-        PorBuffer[] porBuffer = new PorBuffer[contar(simulador.iteradorBuffers())];
-        int b = 0;
-        Iterador<Buffer> itB = simulador.iteradorBuffers();
-        while (itB.haySiguiente()) {
-            Buffer buf = itB.siguiente();
-            porBuffer[b++] = new PorBuffer(buf.getId(), buf.getIdComputadorAnfitrion(), buf.getCapacidad(),
-                    buf.getCantidadElementos(), buf.getTotalProducidos(), buf.getTotalConsumidos());
-        }
-
         return new MetricasSimulacion(ciclos, total, terminados, completados, porDeadline, cumplidos,
                 bloqueadosAhora, suspendidosAhora, totalSuspensiones, totalReactivaciones,
-                throughput, respuesta, bloqueado, maxBloqueado, equidad, porPc, porBuffer,
+                throughput, respuesta, bloqueado, maxBloqueado, equidad, porPc,
                 MetricasDisco.de(simulador.getDisco()));
-    }
-
-    private static <T> int contar(Iterador<T> it) {
-        int n = 0;
-        while (it.haySiguiente()) {
-            it.siguiente();
-            n++;
-        }
-        return n;
     }
 
     /** Todos los procesos de un computador, sin repetir: nuevos, listos, en CPU, bloqueados, suspendidos y terminados. */
@@ -446,14 +405,6 @@ public final class MetricasSimulacion {
         return disco;
     }
 
-    public int getCantidadBuffers() {
-        return buffers.length;
-    }
-
-    public PorBuffer getBuffer(int indice) {
-        return buffers[indice];
-    }
-
     // ------------------------------------------------------------------ texto
 
     private static String num(double v, String formato) {
@@ -513,17 +464,6 @@ public final class MetricasSimulacion {
             sb.append('\n');
         }
 
-        sb.append("\n Por buffer:\n");
-        if (buffers.length == 0) {
-            sb.append("   (no hay buffers)\n");
-        } else {
-            sb.append(String.format("   %-12s %5s %9s %10s %10s%n", "Buffer", "PC", "Ocupación", "Producidos", "Consumidos"));
-            for (int i = 0; i < buffers.length; i++) {
-                PorBuffer b = buffers[i];
-                sb.append(String.format("   %-12s %5d %4d/%-4d %10d %10d%n", b.id, b.idAnfitrion, b.ocupacion,
-                        b.capacidad, b.producidos, b.consumidos));
-            }
-        }
         return sb.toString();
     }
 }
