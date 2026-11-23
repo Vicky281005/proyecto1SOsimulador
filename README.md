@@ -47,3 +47,5 @@ En `ejemplos/proyecto2/` están los dos JSON del enunciado (sistema de archivos 
 
 ## Informe
 Informe del Proyecto 1: https://docs.google.com/document/d/1cdSB2gOKM-RMue0dC088aRc9dJCAq8c4xHOr6vEPkOU/edit?usp=sharing
+
+Informe del Proyecto 2: https://docs.google.com/document/d/1FdyxvBacxGL_nZE4qOoRQPHx11gwcFUSY5aRqBcSja0/edit?usp=sharing
