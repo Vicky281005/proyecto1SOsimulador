@@ -45,7 +45,7 @@ public class VentanaMetricas extends JDialog {
      * @param simulador simulador cuyas métricas se muestran.
      */
     public VentanaMetricas(JFrame dueno, Simulador simulador) {
-        super(dueno, "ÁvilaOS – Métricas de rendimiento", false);
+        super((JFrame) null, "ÁvilaOS – Métricas de rendimiento", false);
         this.simulador = simulador;
 
         area.setEditable(false);

@@ -57,7 +57,7 @@ public class VentanaDisco extends JDialog {
      * @param simulador simulador cuyo disco se muestra (puede no tener disco).
      */
     public VentanaDisco(JFrame dueno, Simulador simulador) {
-        super(dueno, "ÁvilaOS – Disco y planificación de E/S", false);
+        super((JFrame) null, "ÁvilaOS – Disco y planificación de E/S", false);
         this.simulador = simulador;
         setResizable(true);
 

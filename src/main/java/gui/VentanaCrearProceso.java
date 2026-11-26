@@ -58,7 +58,7 @@ public class VentanaCrearProceso extends JDialog {
      * @param simulador simulador al que se envían los procesos creados.
      */
     public VentanaCrearProceso(JFrame dueno, Simulador simulador) {
-        super(dueno, "ÁvilaOS – Vista 1: crear proceso", false);
+        super((JFrame) null, "ÁvilaOS – Vista 1: crear proceso", false);
         this.simulador = simulador;
 
         Iterador<Computador> it = simulador.iteradorComputadores();

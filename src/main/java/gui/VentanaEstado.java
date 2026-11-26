@@ -291,6 +291,7 @@ public class VentanaEstado extends JFrame {
     }
 
     private void reiniciar() {
+        toFront();
         int confirm = JOptionPane.showConfirmDialog(this,
                 "¿Desea reiniciar la simulación al escenario inicial?",
                 "Reiniciar Simulación",

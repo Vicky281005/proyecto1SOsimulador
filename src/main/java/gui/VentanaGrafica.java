@@ -74,7 +74,7 @@ public class VentanaGrafica extends JDialog {
      * @param simulador simulador cuyo historial de utilización se dibuja.
      */
     public VentanaGrafica(JFrame dueno, Simulador simulador) {
-        super(dueno, "ÁvilaOS – Utilización detallada de CPU", false);
+        super((JFrame) null, "ÁvilaOS – Utilización detallada de CPU", false);
         this.simulador = simulador;
         setResizable(true);
 

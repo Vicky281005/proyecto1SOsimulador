@@ -63,7 +63,7 @@ public class VentanaGraficaDisco extends JDialog {
      * @param simulador simulador cuyo disco se dibuja.
      */
     public VentanaGraficaDisco(JFrame dueno, Simulador simulador) {
-        super(dueno, "ÁvilaOS – Desplazamiento acumulado del cabezal", false);
+        super((JFrame) null, "ÁvilaOS – Desplazamiento acumulado del cabezal", false);
         this.simulador = simulador;
         setResizable(true);
 
