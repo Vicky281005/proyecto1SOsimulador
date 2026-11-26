@@ -103,6 +103,10 @@ public class SistemaArchivos implements ServicioArchivos {
         String usuario = (proceso.getUsuario() != null && !proceso.getUsuario().isBlank())
                 ? proceso.getUsuario().trim()
                 : "admin";
+        if (!modo.esAdministrador() && "admin".equalsIgnoreCase(usuario)) {
+            throw new OperacionRechazadaException(
+                    "Permiso denegado: el usuario 'admin' está reservado exclusivamente para el Modo Administrador.");
+        }
 
         mutex.acquireUninterruptibly();
         try {
@@ -538,6 +542,27 @@ public class SistemaArchivos implements ServicioArchivos {
     }
 
     /**
+     * Cancela todas las creaciones pendientes que quedaron en vuelo (por ejemplo al detener
+     * la simulación y reiniciar preservando el disco), liberando sus bloques reservados en
+     * disco y desbloqueando sus rutas.
+     */
+    public void cancelarCreacionesPendientes() {
+        mutex.acquireUninterruptibly();
+        try {
+            Iterador<CreacionPendiente> it = creacionesPendientes.iterador();
+            while (it.haySiguiente()) {
+                CreacionPendiente cp = it.siguiente();
+                if (cp != null && cp.tipo == TipoNodoArchivo.ARCHIVO && cp.primerBloque >= 0) {
+                    disco.liberarCadenaBloques(cp.primerBloque);
+                }
+            }
+            creacionesPendientes.vaciar();
+        } finally {
+            mutex.release();
+        }
+    }
+
+    /**
      * Valida de solo lectura sintaxis, existencia, permisos ({@link ModoUsuario#ADMINISTRADOR}
      * vs. {@link ModoUsuario#USUARIO}) y espacio libre en disco para una operación solicitada
      * sobre el sistema de archivos, protegiendo las consultas con {@code mutex}.
@@ -562,6 +587,9 @@ public class SistemaArchivos implements ServicioArchivos {
         }
         ModoUsuario modoEfectivo = (modo != null) ? modo : ModoUsuario.ADMINISTRADOR;
         String usuarioLimpio = usuario.trim();
+        if (!modoEfectivo.esAdministrador() && "admin".equalsIgnoreCase(usuarioLimpio)) {
+            return "Permiso denegado: el usuario 'admin' está reservado exclusivamente para el Modo Administrador.";
+        }
         String rutaNorm;
         try {
             rutaNorm = normalizarRuta(ruta);

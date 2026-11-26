@@ -338,6 +338,10 @@ public class PersistenciaPrueba {
 
     public static void probarEdicionTablaComputador() {
         System.out.println("\n>>> PRUEBA 5: Edición de política y quantum en VentanaConfiguracion");
+        if (java.awt.GraphicsEnvironment.isHeadless()) {
+            System.out.println("    [OMITIDO] Entorno sin pantalla (headless): prueba GUI de VentanaConfiguracion omitida.");
+            return;
+        }
         VentanaConfiguracion.setModoPrueba(true);
         try {
             VentanaConfiguracion vc = new VentanaConfiguracion();

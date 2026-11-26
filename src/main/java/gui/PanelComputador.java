@@ -303,7 +303,8 @@ public class PanelComputador extends JPanel {
         }
         if (terminado) {
             return base + " – fin en ciclo " + p.getCicloFin()
-                    + (p.isDeadlineCumplido() ? "" : " – deadline FALLIDO");
+                    + (p.isDeadlineCumplido() ? "" : " – deadline FALLIDO")
+                    + (p.fueRechazadoES() ? " – E/S RECHAZADA" : "");
         }
         return base + " – prioridad " + p.getPrioridad() + ", restante " + p.getTiempoRestante();
     }

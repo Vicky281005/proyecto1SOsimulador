@@ -225,7 +225,7 @@ public class PanelExploradorArchivos extends JPanel {
         gbc.weighty = 1.0;
         panel.add(new JLabel(), gbc);
 
-        return new JScrollPane(panel).getViewport().getView() == panel ? wrapDetallesScroll(panel) : panel;
+        return wrapDetallesScroll(panel);
     }
 
     private static JPanel wrapDetallesScroll(JPanel interno) {
@@ -798,14 +798,19 @@ public class PanelExploradorArchivos extends JPanel {
         if (nuevoNombre == null) {
             return;
         }
+        String limpio = nuevoNombre.trim();
+        if (limpio.equals(sel.getNombre())) {
+            mostrarErrorValidacion("El nuevo nombre es igual al nombre actual ('" + sel.getNombre() + "').");
+            return;
+        }
 
         String error = validarOperacionGUI(sa, TipoOperacionES.ACTUALIZAR, sel.getRuta(),
-                nuevoNombre.trim(), 0, modo, usuario, sel.esDirectorio());
+                limpio, 0, modo, usuario, sel.esDirectorio());
         if (error != null) {
             mostrarErrorValidacion(error);
             return;
         }
-        encolarOperacion(TipoOperacionES.ACTUALIZAR, sel.getRuta(), nuevoNombre.trim(), 0, modo, usuario);
+        encolarOperacion(TipoOperacionES.ACTUALIZAR, sel.getRuta(), limpio, 0, modo, usuario);
     }
 
     private void accionEliminar() {

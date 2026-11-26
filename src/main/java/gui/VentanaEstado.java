@@ -48,6 +48,7 @@ public class VentanaEstado extends JFrame {
 
     private final JLabel lblCiclo = new JLabel("Ciclo: 0");
     private final JLabel lblEstado = new JLabel();
+    private final JLabel lblResumenDisco = new JLabel("Disco: —");
     private final JLabel lblDuracion = new JLabel();
     private final JButton btnIniciar = new JButton("Iniciar");
     private final JButton btnPausa = new JButton("Pausar");
@@ -123,6 +124,8 @@ public class VentanaEstado extends JFrame {
         JPanel fila2 = new JPanel(new FlowLayout(FlowLayout.LEFT, 12, 2));
         fila2.add(lblCiclo);
         fila2.add(lblEstado);
+        fila2.add(new javax.swing.JSeparator(javax.swing.SwingConstants.VERTICAL));
+        fila2.add(lblResumenDisco);
         fila2.add(new javax.swing.JSeparator(javax.swing.SwingConstants.VERTICAL));
         fila2.add(new JLabel("Duración del ciclo:"));
         fila2.add(deslizador);
@@ -211,6 +214,7 @@ public class VentanaEstado extends JFrame {
             ventanaGrafica = new VentanaGrafica(this, simulador);
         }
         ventanaGrafica.setVisible(true);
+        ventanaGrafica.refrescar();
         ventanaGrafica.toFront();
     }
 
@@ -220,6 +224,7 @@ public class VentanaEstado extends JFrame {
             ventanaGraficaDisco = new VentanaGraficaDisco(this, simulador);
         }
         ventanaGraficaDisco.setVisible(true);
+        ventanaGraficaDisco.refrescar();
         ventanaGraficaDisco.toFront();
     }
 
@@ -229,6 +234,7 @@ public class VentanaEstado extends JFrame {
             ventanaMetricas = new VentanaMetricas(this, simulador);
         }
         ventanaMetricas.setVisible(true);
+        ventanaMetricas.refrescar();
         ventanaMetricas.toFront();
     }
 
@@ -239,6 +245,7 @@ public class VentanaEstado extends JFrame {
         }
         ventanaDisco.setModoUsuario(panelArchivos.getModoSeleccionado());
         ventanaDisco.setVisible(true);
+        ventanaDisco.refrescar();
         ventanaDisco.toFront();
     }
 
@@ -359,6 +366,7 @@ public class VentanaEstado extends JFrame {
         final boolean[] faltaJson = new boolean[1];
         final boolean[] limiteAlcanzado = new boolean[1];
         final boolean[] pausada = new boolean[1];
+        final String[] resumenDisco = new String[1];
         final PanelComputador.Snapshot[] snapshotsPc = new PanelComputador.Snapshot[paneles.length];
         final PanelExploradorArchivos.Snapshot[] snapshotArchivos = new PanelExploradorArchivos.Snapshot[1];
 
@@ -368,6 +376,15 @@ public class VentanaEstado extends JFrame {
             faltaJson[0] = simulador.isRequiereCargaJsonObligatoria() && !simulador.tieneAmbosJsonCargados();
             limiteAlcanzado[0] = simulador.isLimiteAlcanzado();
             pausada[0] = simulador.estaPausada();
+            disco.DiscoSimulado d = simulador.getDisco();
+            if (d == null) {
+                resumenDisco[0] = "Disco: sin configurar";
+            } else {
+                resumenDisco[0] = "Disco: " + d.getPoliticaActual().getCodigoJson()
+                        + " | Cabezal: " + d.getPosicionCabezal()
+                        + (d.isDireccionAscendente() ? " ↑" : " ↓")
+                        + " | Cola E/S: " + d.getCantidadEnColaES();
+            }
             for (int i = 0; i < paneles.length; i++) {
                 snapshotsPc[i] = paneles[i].capturarSnapshot();
             }
@@ -391,6 +408,7 @@ public class VentanaEstado extends JFrame {
 
             lblCiclo.setText("Ciclo: " + cicloActual[0]);
             lblEstado.setText("Estado: " + textoEstado(hayTrabajo[0]));
+            lblResumenDisco.setText(resumenDisco[0]);
             boolean esAdmin = panelArchivos.getModoSeleccionado().esAdministrador();
             btnIniciar.setEnabled(!iniciada && !detenida && !faltaJson[0]);
             btnPausa.setEnabled(iniciada && !detenida && !limiteAlcanzado[0]);

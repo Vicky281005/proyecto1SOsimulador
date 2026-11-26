@@ -38,7 +38,7 @@ public class VentanaCrearProceso extends JDialog {
 
     private final JTextField txtNombre = new JTextField(14);
     private final JTextField txtInstrucciones = new JTextField("10", 14);
-    private final JTextField txtMemoria = new JTextField("100", 14);
+    private final JTextField txtMemoria = new JTextField("16", 14);
     private final JTextField txtPrioridad = new JTextField("1", 14);
     private final JTextField txtDeadline = new JTextField("50", 14);
     private final JTextField txtPeriodoEs = new JTextField("3", 14);
@@ -202,7 +202,7 @@ public class VentanaCrearProceso extends JDialog {
     private void limpiar() {
         txtNombre.setText("");
         txtInstrucciones.setText("10");
-        txtMemoria.setText("100");
+        txtMemoria.setText("16");
         txtPrioridad.setText("1");
         txtDeadline.setText("50");
         txtPeriodoEs.setText("3");

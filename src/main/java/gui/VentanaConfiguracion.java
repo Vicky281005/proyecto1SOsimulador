@@ -401,12 +401,12 @@ public class VentanaConfiguracion extends JFrame {
         try {
             fsCargado.validarEstricto();
             procCargado.validarEstricto();
-            if (simuladorExistente != null) {
-                simuladorExistente.detener();
-            }
             modelo.PCB.reiniciarGeneradorId();
             disco.SolicitudES.reiniciarGeneradorId();
             Simulador nuevoSim = GestorPersistencia.construirSimuladorDesdeDosJSON(fsCargado, procCargado);
+            if (simuladorExistente != null) {
+                simuladorExistente.detener();
+            }
             lanzarVistaEstado(nuevoSim);
         } catch (Exception ex) {
             JOptionPane.showMessageDialog(this,
@@ -730,13 +730,22 @@ public class VentanaConfiguracion extends JFrame {
             mostrarListaErrores("Errores en la configuración:", errs);
             return;
         }
-        try {
-            if (simuladorExistente != null) {
-                simuladorExistente.detener();
+        if (!modoPrueba) {
+            int resp = JOptionPane.showConfirmDialog(this,
+                    "Aplicar la configuración manual reiniciará la simulación con un sistema de archivos vacío.\n¿Desea continuar?",
+                    "Confirmar configuración manual",
+                    JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
+            if (resp != JOptionPane.YES_OPTION) {
+                return;
             }
+        }
+        try {
             modelo.PCB.reiniciarGeneradorId();
             disco.SolicitudES.reiniciarGeneradorId();
             Simulador nuevoSim = config.aSimulador();
+            if (simuladorExistente != null) {
+                simuladorExistente.detener();
+            }
             lanzarVistaEstado(nuevoSim);
         } catch (Exception ex) {
             JOptionPane.showMessageDialog(this, "Error al construir la simulación:\n" + ex.getMessage(),

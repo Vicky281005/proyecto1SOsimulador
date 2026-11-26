@@ -1355,6 +1355,12 @@ public class Computador implements ComponenteReloj {
                 cpu.liberar();
                 actual.setEstado(EstadoProceso.LISTO);
                 planificador.encolarListo(actual);
+                simulacion.LogEventos log = (simulador != null) ? simulador.getLogEventos() : null;
+                if (log != null) {
+                    log.registrar(simulacion.LogEventos.TipoEvento.DESALOJO,
+                            actual.getNombre() + " desalojado en " + nombre
+                                    + " (quantum agotado: " + rr.getQuantum() + ")");
+                }
                 despachar(cicloActual);
                 return;
             }
@@ -1386,6 +1392,12 @@ public class Computador implements ComponenteReloj {
         cpu.desalojar();
         actual.setEstado(EstadoProceso.LISTO);
         planificador.encolarListo(actual);
+        simulacion.LogEventos log = (simulador != null) ? simulador.getLogEventos() : null;
+        if (log != null) {
+            log.registrar(simulacion.LogEventos.TipoEvento.DESALOJO,
+                    actual.getNombre() + " desalojado en " + nombre + " por " + siguiente.getNombre()
+                            + " (" + planificador.getPolitica().getNombre() + ")");
+        }
         if (siguiente.verificarDeadline(cicloActual)) {
             terminarPorDeadline(siguiente, cicloActual);
             despachar(cicloActual);

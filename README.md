@@ -23,7 +23,7 @@ Autoras: María Almonte y Alejandra Oporto.
 
 ## Cómo ejecutarlo
 1. Abrir el proyecto en NetBeans, hacer Clean and Build y ejecutar la clase `com.mycompany.proyecto1sosimulador.Proyecto1SOsimulador`.
-2. En la ventana de configuración cargar los dos JSON (`ejemplos/proyecto2/sistema_archivos.json` y `ejemplos/proyecto2/procesos_config.json`) y pulsar «Aplicar ambos JSON y Abrir Simulación», o usar la configuración manual. El reloj no arranca hasta tener ambos JSON.
+2. En la ventana de configuración cargar los dos JSON del enunciado (`ejemplos/proyecto2/sistema_archivos_enunciado.json` y `ejemplos/proyecto2/procesos_enunciado.json`) y pulsar «Aplicar ambos JSON y Abrir Simulación». El reloj no arranca hasta tener ambos JSON.
 3. Con el argumento `--consola` se ejecuta el escenario de demostración y se imprime el reporte por consola.
 
 ## Cómo probar
@@ -43,7 +43,11 @@ Las pruebas son programas con `main()` en `src/test/java`. Después de compilar 
 En Linux o macOS se usa `:` en lugar de `;` como separador del classpath. Las pruebas `gui.VentanaDiscoPrueba`, `gui.PanelExploradorArchivosPrueba` y `gui.VentanaMetricasPrueba` necesitan entorno gráfico. Otras pruebas disponibles: simulacion.MetricasPrueba, simulacion.SimuladorControlPrueba, simulacion.HistorialUtilizacionPrueba, hardware.RelojPrueba y gui.ValidadorProcesoPrueba.
 
 ## Ejemplos
-En `ejemplos/proyecto2/` están los dos JSON del enunciado (sistema de archivos y procesos).
+En `ejemplos/proyecto2/` se incluyen los escenarios de entrada en formato JSON:
+- `sistema_archivos_enunciado.json` + `procesos_enunciado.json`: escenario oficial exacto del enunciado (200/200 bloques y 8 procesos).
+- `sistema_archivos_enunciado.json` + `procesos_swap.json`: demostración de suspensión/reactivación en Swap y criterio de víctima por menor prioridad (RAM 32).
+- `sistema_archivos_demo_espacio.json` + `procesos_create_swap.json`: disco con 40 bloques libres en huecos para demostrar asignación encadenada fragmentada (`CREATE` de 10 bloques), Modo Usuario (`/usuarios/user1`) y Swap.
+- `sistema_archivos.json` + `procesos_config.json`: escenario base utilizado por `IntegracionProyecto2Prueba`.
 
 ## Informe
 Informe del Proyecto 1: https://docs.google.com/document/d/1cdSB2gOKM-RMue0dC088aRc9dJCAq8c4xHOr6vEPkOU/edit?usp=sharing

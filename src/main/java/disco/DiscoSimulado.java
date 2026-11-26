@@ -622,7 +622,6 @@ public class DiscoSimulado implements ComponenteReloj {
                     + " en el bloque " + completada.getBloqueDestino()
                     + " (" + politicaUsada.getCodigoJson() + ")";
             if (log != null) {
-                // Cuando LogEventos incorpore el tipo específico de disco, reemplazar OTRO
                 log.registrar(LogEventos.TipoEvento.DISCO, detalle);
             }
             if (escucha != null) {
@@ -632,6 +631,9 @@ public class DiscoSimulado implements ComponenteReloj {
     }
 
     private void seleccionarSiguienteLocked(long cicloActual) {
+        if (politicaActual == PoliticaDisco.C_SCAN) {
+            this.direccionAscendente = true;
+        }
         int limiteSuperior = calcularLimiteSuperiorSCAN();
         SolicitudES elegida = planificador.seleccionarSiguiente(
                 posicionCabezal, direccionAscendente, limiteSuperior + 1);

@@ -264,6 +264,7 @@ public final class GestorPersistencia {
             throw new IllegalArgumentException("La configuración de procesos (JSON 2) no puede ser nula.");
         }
         procCfg.validarEstricto();
+        saPreservado.cancelarCreacionesPendientes();
         saPreservado.getDisco().reiniciarParaNuevaSimulacion();
         return ensamblarSimulador(saPreservado.getDisco(), saPreservado, procCfg);
     }
@@ -561,7 +562,7 @@ public final class GestorPersistencia {
         if (t.contains("DEADLINE") || t.contains("EDF")) {
             return PoliticaPlanificacion.EDF;
         }
-        if (t.contains("PRIORIDAD")) {
+        if (t.contains("PRIORIDAD") || t.contains("PRIORITY")) {
             return PoliticaPlanificacion.PRIORIDAD;
         }
         return PoliticaPlanificacion.FCFS;

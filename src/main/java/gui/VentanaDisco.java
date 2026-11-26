@@ -104,7 +104,9 @@ public class VentanaDisco extends JDialog {
 
         JPanel centro = new JPanel(new BorderLayout());
         centro.setBorder(BorderFactory.createTitledBorder("Mapa de bloques (pase el cursor para ver el archivo)"));
-        centro.add(mapa, BorderLayout.CENTER);
+        JScrollPane scrollMapa = new JScrollPane(mapa);
+        scrollMapa.setBorder(null);
+        centro.add(scrollMapa, BorderLayout.CENTER);
 
         setLayout(new BorderLayout(6, 6));
         add(control, BorderLayout.NORTH);
@@ -113,6 +115,12 @@ public class VentanaDisco extends JDialog {
         add(leyenda(), BorderLayout.SOUTH);
         refrescar(); // primera lectura antes de pack(): así la ventana mide el mapa completo
         pack();
+        java.awt.Dimension tam = getSize();
+        java.awt.Rectangle usable = java.awt.GraphicsEnvironment.getLocalGraphicsEnvironment()
+                .getMaximumWindowBounds();
+        int maxW = Math.max(760, Math.min(1180, usable.width - 40));
+        int maxH = Math.max(520, Math.min(760, usable.height - 40));
+        setSize(Math.min(tam.width, maxW), Math.min(tam.height, maxH));
         setLocationRelativeTo(dueno);
 
         temporizador = new Timer(REFRESCO_MS, e -> refrescar());
