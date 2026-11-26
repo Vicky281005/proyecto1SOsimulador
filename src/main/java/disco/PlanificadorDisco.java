@@ -147,6 +147,18 @@ public class PlanificadorDisco {
     }
 
     /**
+     * Vacía completamente la cola única de solicitudes de E/S pendientes.
+     */
+    public void vaciar() {
+        mutexCola.acquireUninterruptibly();
+        try {
+            colaES.vaciar();
+        } finally {
+            mutexCola.release();
+        }
+    }
+
+    /**
      * Devuelve un iterador seguro (snapshot) sobre las solicitudes actualmente en espera.
      */
     public Iterador<SolicitudES> iteradorCola() {

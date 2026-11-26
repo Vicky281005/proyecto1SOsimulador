@@ -58,7 +58,7 @@ public class ProcesoESPrueba {
 
         @Override
         public void completar(SolicitudES s, boolean exito) {
-            hiloCompletar = Thread.currentThread().getId();
+            hiloCompletar = Thread.currentThread().threadId();
             completadas++;
         }
     }

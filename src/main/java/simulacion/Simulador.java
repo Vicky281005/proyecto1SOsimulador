@@ -431,7 +431,10 @@ public class Simulador implements EscuchaFinES {
                 Iterador<Computador> it = computadores.iterador();
                 while (it.haySiguiente()) {
                     Computador c = it.siguiente();
-                    if (c != null && c.getCantidadNuevos() == 0 && c.getPlanificador().estaVacio() && c.getCantidadBloqueados() == 0) {
+                    if (c != null && c.getCantidadNuevos() == 0 && c.getPlanificador().estaVacio()
+                            && c.getCantidadBloqueados() == 0
+                            && c.getCantidadListosSuspendidos() == 0
+                            && c.getCantidadBloqueadosSuspendidos() == 0) {
                         if (!c.getCpu().estaOciosa()) {
                             c.getCpu().liberar();
                         }
@@ -467,7 +470,9 @@ public class Simulador implements EscuchaFinES {
         Iterador<Computador> it = computadores.iterador();
         while (it.haySiguiente()) {
             Computador c = it.siguiente();
-            if (c != null && (c.getCantidadTerminados() > 0 || c.getCantidadNuevos() > 0 || c.getCantidadBloqueados() > 0 || !c.getPlanificador().estaVacio())) {
+            if (c != null && (c.getCantidadTerminados() > 0 || c.getCantidadNuevos() > 0
+                    || c.getCantidadBloqueados() > 0 || !c.getPlanificador().estaVacio()
+                    || c.getCantidadListosSuspendidos() > 0 || c.getCantidadBloqueadosSuspendidos() > 0)) {
                 return true;
             }
         }

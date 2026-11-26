@@ -169,8 +169,81 @@ public class VentanaDisco extends JDialog {
         if (!isVisible() && !lblCabezal.getText().isEmpty()) {
             return;
         }
-        DiscoSimulado d = simulador.getDisco();
-        if (d == null) {
+        DiscoSimulado[] refDisco = new DiscoSimulado[1];
+        int[] cabezalRef = new int[1];
+        boolean[] subeRef = new boolean[1];
+        int[] actualDestinoRef = new int[]{-1};
+        int[] actualBloquesRef = new int[1];
+        String[] actualTextoRef = new String[]{"ninguna"};
+        PoliticaDisco[] politicaRef = new PoliticaDisco[1];
+        int[] velocidadRef = new int[1];
+        String[] colaTextoRef = new String[1];
+        int[][] destinosRef = new int[1][];
+        @SuppressWarnings("unchecked")
+        ListaEnlazada<disco.BloqueDisco>[] copiaRef = new ListaEnlazada[1];
+        int[] espacioRef = new int[4]; // libresDatos, totalDatos, libresSwap, tamSwap
+        long[] statsLongRef = new long[2]; // atendidas, despTotal
+        double[] esperaPromRef = new double[1];
+        PoliticaDisco[] todasPoliticas = PoliticaDisco.values();
+        long[] porPoliticaRef = new long[todasPoliticas.length];
+
+        simulador.leerEstado(() -> {
+            DiscoSimulado d = simulador.getDisco();
+            refDisco[0] = d;
+            if (d == null) {
+                return;
+            }
+            int cab = d.getPosicionCabezal();
+            cabezalRef[0] = cab;
+            subeRef[0] = d.isDireccionAscendente();
+            SolicitudES act = d.getSolicitudActual();
+            if (act != null) {
+                actualDestinoRef[0] = act.getBloqueDestino();
+                actualBloquesRef[0] = act.getCantidadBloques();
+                actualTextoRef[0] = act + " (" + act.getBloquesRestantesTransferencia() + " bloque(s) por transferir)";
+            }
+            politicaRef[0] = d.getPoliticaActual();
+            velocidadRef[0] = d.getVelocidadCabezal();
+
+            StringBuilder cola = new StringBuilder();
+            int[] destinos = new int[d.getCantidadEnColaES()];
+            int n = 0;
+            Iterador<SolicitudES> it = d.iteradorColaES();
+            while (it.haySiguiente()) {
+                SolicitudES s = it.siguiente();
+                if (n < destinos.length) {
+                    destinos[n] = s.getBloqueDestino();
+                }
+                n++;
+                cola.append(String.format("%2d. %s  (d=%d)%n", n, s, Math.abs(s.getBloqueDestino() - cab)));
+            }
+            if (n == 0) {
+                cola.append("(vacía)");
+            }
+            if (n < destinos.length) {
+                int[] recortado = new int[n];
+                for (int i = 0; i < n; i++) {
+                    recortado[i] = destinos[i];
+                }
+                destinos = recortado;
+            }
+            colaTextoRef[0] = cola.toString();
+            destinosRef[0] = destinos;
+            copiaRef[0] = d.copiarBloques();
+
+            espacioRef[0] = d.getBloquesLibresDatos();
+            espacioRef[1] = d.getTotalBloquesDatos();
+            espacioRef[2] = d.getBloquesLibresSwap();
+            espacioRef[3] = d.getTamanoSwap();
+            statsLongRef[0] = d.getTotalSolicitudesAtendidas();
+            statsLongRef[1] = d.getDesplazamientoTotal();
+            esperaPromRef[0] = d.getTiempoEsperaPromedio();
+            for (int i = 0; i < todasPoliticas.length; i++) {
+                porPoliticaRef[i] = d.getSolicitudesAtendidas(todasPoliticas[i]);
+            }
+        });
+
+        if (refDisco[0] == null) {
             lblCabezal.setText("No hay disco configurado en este simulador.");
             lblActual.setText(" ");
             lblEspacio.setText(" ");
@@ -181,41 +254,14 @@ public class VentanaDisco extends JDialog {
             spinVelocidad.setEnabled(false);
             return;
         }
-        aplicarPermisosModo(d != null);
+        aplicarPermisosModo(true);
 
-        int cabezal = d.getPosicionCabezal();
-        boolean sube = d.isDireccionAscendente();
-        SolicitudES actual = d.getSolicitudActual();
-        PoliticaDisco politica = d.getPoliticaActual();
-        int velocidad = d.getVelocidadCabezal();
+        int cabezal = cabezalRef[0];
+        boolean sube = subeRef[0];
+        PoliticaDisco politica = politicaRef[0];
+        int velocidad = velocidadRef[0];
 
-        StringBuilder cola = new StringBuilder();
-        int[] destinos = new int[d.getCantidadEnColaES()];
-        int n = 0;
-        Iterador<SolicitudES> it = d.iteradorColaES();
-        while (it.haySiguiente()) {
-            SolicitudES s = it.siguiente();
-            if (n < destinos.length) {
-                destinos[n] = s.getBloqueDestino();
-            }
-            n++;
-            cola.append(String.format("%2d. %s  (d=%d)%n", n, s, Math.abs(s.getBloqueDestino() - cabezal)));
-        }
-        if (n == 0) {
-            cola.append("(vacía)");
-        }
-        if (n < destinos.length) {
-            // La cola cambió entre contar e iterar: se recorta el arreglo a lo realmente leído.
-            int[] recortado = new int[n];
-            for (int i = 0; i < n; i++) {
-                recortado[i] = destinos[i];
-            }
-            destinos = recortado;
-        }
-
-        ListaEnlazada<disco.BloqueDisco> copia = d.copiarBloques();
-        mapa.actualizar(copia, cabezal, actual == null ? -1 : actual.getBloqueDestino(),
-                actual == null ? 0 : actual.getCantidadBloques(), destinos);
+        mapa.actualizar(copiaRef[0], cabezal, actualDestinoRef[0], actualBloquesRef[0], destinosRef[0]);
 
         actualizando = true;
         try {
@@ -230,18 +276,17 @@ public class VentanaDisco extends JDialog {
         }
 
         lblCabezal.setText("Cabezal en el bloque " + cabezal + (sube ? "  (sentido ascendente)" : "  (sentido descendente)"));
-        lblActual.setText("En atención: " + (actual == null ? "ninguna" : actual
-                + " (" + actual.getBloquesRestantesTransferencia() + " bloque(s) por transferir)"));
+        lblActual.setText("En atención: " + actualTextoRef[0]);
         lblEspacio.setText(String.format("Libres: %d de %d bloques de datos  |  swap libre: %d de %d",
-                d.getBloquesLibresDatos(), d.getTotalBloquesDatos(), d.getBloquesLibresSwap(), d.getTamanoSwap()));
+                espacioRef[0], espacioRef[1], espacioRef[2], espacioRef[3]));
         lblEstadisticas.setText(String.format("Atendidas: %d  |  desplazamiento total: %d bloques  |  espera prom.: %.1f ciclos",
-                d.getTotalSolicitudesAtendidas(), d.getDesplazamientoTotal(), d.getTiempoEsperaPromedio()));
+                statsLongRef[0], statsLongRef[1], esperaPromRef[0]));
         StringBuilder pp = new StringBuilder("Por política: ");
-        for (PoliticaDisco p : PoliticaDisco.values()) {
-            pp.append(p.getCodigoJson()).append('=').append(d.getSolicitudesAtendidas(p)).append("  ");
+        for (int i = 0; i < todasPoliticas.length; i++) {
+            pp.append(todasPoliticas[i].getCodigoJson()).append('=').append(porPoliticaRef[i]).append("  ");
         }
         lblPorPolitica.setText(pp.toString());
-        areaCola.setText(cola.toString());
+        areaCola.setText(colaTextoRef[0]);
         areaCola.setCaretPosition(0);
     }
 

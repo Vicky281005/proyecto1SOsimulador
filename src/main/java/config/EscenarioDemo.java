@@ -1,5 +1,6 @@
 package config;
 
+import archivos.SistemaArchivos;
 import disco.DiscoSimulado;
 import enums.PoliticaPlanificacion;
 import enums.TipoInstruccion;
@@ -12,12 +13,11 @@ import planificacion.FabricaPoliticas;
 import simulacion.Simulador;
 
 /**
- * Escenario de demostración reutilizable.
+ * Escenario de demostración reutilizable para Proyecto 2.
  *
- * <p>Arma un simulador con tres computadores (FCFS, EDF, Prioridades) y ocho
- * procesos para mostrar la interfaz gráfica o el reporte en modo consola. El
- * objetivo es que haya un único punto donde se define el escenario, evitando
- * duplicación entre los distintos lanzadores.</p>
+ * <p>Arma un simulador con un único computador ({@code PC-1}, FCFS), su disco
+ * simulado, el {@link SistemaArchivos} conectado y procesos de ejemplo para
+ * mostrar la interfaz gráfica o el reporte en modo consola.</p>
  */
 public final class EscenarioDemo {
 
@@ -35,28 +35,21 @@ public final class EscenarioDemo {
 
         Computador pc1 = new Computador(1, "PC-1", 1024,
                 FabricaPoliticas.crear(PoliticaPlanificacion.FCFS));
-        Computador pc2 = new Computador(2, "PC-2", 1024,
-                FabricaPoliticas.crear(PoliticaPlanificacion.EDF));
-        Computador pc3 = new Computador(3, "PC-3", 1024,
-                FabricaPoliticas.crear(PoliticaPlanificacion.PRIORIDAD));
-
         simulador.registrarComputador(pc1);
-        simulador.registrarComputador(pc2);
-        simulador.registrarComputador(pc3);
 
-        // Disco de demostración (200 bloques, 20 de swap) para la vista del disco.
-        simulador.setDisco(new DiscoSimulado("Disco-SD", DiscoSimulado.TOTAL_BLOQUES_POR_DEFECTO,
-                DiscoSimulado.POSICION_CABEZAL_POR_DEFECTO, 20));
+        // Disco de demostración (200 bloques, 20 de swap) y sistema de archivos conectado.
+        DiscoSimulado disco = new DiscoSimulado("Disco-SD", DiscoSimulado.TOTAL_BLOQUES_POR_DEFECTO,
+                DiscoSimulado.POSICION_CABEZAL_POR_DEFECTO, 20);
+        SistemaArchivos sistemaArchivos = new SistemaArchivos(disco);
+        simulador.setDisco(disco);
+        simulador.setServicioArchivos(sistemaArchivos);
 
-        // Memoria grande por proceso para visualizar la cola de nuevos.
+        // Procesos de demostración en el único computador (PC-1).
         simulador.cargarProceso(proceso("P1", 1, 12, 500, 60, pc1.getId()));
         simulador.cargarProceso(proceso("P2", 1, 15, 500, 40, pc1.getId()));
         simulador.cargarProceso(proceso("P3", 1, 10, 500, 50, pc1.getId()));
-        simulador.cargarProceso(proceso("P4", 1, 14, 600, 70, pc2.getId()));
-        simulador.cargarProceso(proceso("P5", 1, 12, 600, 25, pc2.getId()));
-        simulador.cargarProceso(proceso("P6", 3, 10, 500, 60, pc3.getId()));
-        simulador.cargarProceso(proceso("P7", 1, 14, 500, 50, pc3.getId()));
-        simulador.cargarProceso(proceso("P8", 2, 12, 500, 55, pc3.getId()));
+        simulador.cargarProceso(proceso("P4", 2, 14, 400, 70, pc1.getId()));
+        simulador.cargarProceso(proceso("P5", 3, 12, 400, 55, pc1.getId()));
 
         return simulador;
     }

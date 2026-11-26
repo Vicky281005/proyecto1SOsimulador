@@ -360,8 +360,8 @@ public class Computador implements ComponenteReloj {
         if (log != null) {
             log.registrar(simulacion.LogEventos.TipoEvento.SUSPENSION,
                     "Suspensión: " + victima.getNombre() + " (prioridad " + victima.getPrioridad()
-                            + ", " + victima.getTiempoBloqueadoAcumulado() + " ciclos bloqueado) se escribe en swap (bloques "
-                            + primerBloque + "-" + (primerBloque + cantidad - 1) + ") para admitir a "
+                            + ", " + victima.getTiempoBloqueadoAcumulado() + " ciclos bloqueado) se escribe en swap (primer bloque "
+                            + primerBloque + ", " + cantidad + " bloques encadenados) para admitir a "
                             + paraAdmitir.getNombre() + " (necesita " + paraAdmitir.getMemoriaAsignada()
                             + " bloques de RAM)");
         }
@@ -1406,10 +1406,14 @@ public class Computador implements ComponenteReloj {
         }
     }
 
-    /** Indica si no queda nada por hacer (CPU ociosa y todas las colas vacías). */
+    /** Indica si no queda nada por hacer (solo lectura: no muta la CPU). */
     public boolean sinTrabajoPendiente() {
-        limpiarCpuSiOciosa();
-        return cpu.estaOciosa()
+        PCB actual = cpu.getProcesoActual();
+        boolean cpuLibre = cpu.estaOciosa()
+                || actual == null
+                || (actual.getTiempoRestante() == 0 && !actual.isBloqueoIOPendiente())
+                || actual.getEstado() == EstadoProceso.TERMINADO;
+        return cpuLibre
                 && planificador.estaVacio()
                 && nuevos.estaVacia()
                 && bloqueados.estaVacia()

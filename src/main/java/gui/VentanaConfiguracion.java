@@ -152,6 +152,11 @@ public class VentanaConfiguracion extends JFrame {
         JButton btnIniciarManual = new JButton("Aplicar Config Manual ►");
         btnIniciarManual.setFont(btnIniciarManual.getFont().deriveFont(Font.BOLD, 12.5f));
         btnIniciarManual.addActionListener(e -> iniciarSimulacionManual());
+        if (requiereCargaDualPendiente()) {
+            btnIniciarManual.setEnabled(false);
+            btnIniciarManual.setToolTipText(
+                    "Primero debe cargar los dos archivos JSON obligatorios en la Pestaña 1.");
+        }
         pnlDer.add(btnIniciarManual);
 
         pnlInferior.add(pnlIzq, BorderLayout.WEST);
@@ -649,7 +654,19 @@ public class VentanaConfiguracion extends JFrame {
         actualizarCamposGlobales();
     }
 
+    private boolean requiereCargaDualPendiente() {
+        return simuladorExistente != null
+                && simuladorExistente.isRequiereCargaJsonObligatoria()
+                && !simuladorExistente.tieneAmbosJsonCargados();
+    }
+
     private void iniciarSimulacionManual() {
+        if (requiereCargaDualPendiente()) {
+            JOptionPane.showMessageDialog(this,
+                    "Primero debe cargar los dos archivos JSON obligatorios en la Pestaña 1.",
+                    "Carga de JSON requerida", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
         if (!aplicarCamposGlobalesAConfig()) {
             return;
         }

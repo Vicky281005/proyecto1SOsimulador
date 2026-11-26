@@ -353,8 +353,10 @@ public class VentanaEstado extends JFrame {
     private void refrescar() {
         final StringBuilder logSb = new StringBuilder();
         final long[] cicloActual = new long[1];
+        final boolean[] hayTrabajo = new boolean[1];
         simulador.leerEstado(() -> {
             cicloActual[0] = simulador.getCicloActual();
+            hayTrabajo[0] = simulador.hayTrabajoPendiente();
             for (PanelComputador panel : paneles) {
                 panel.actualizar();
             }
@@ -371,7 +373,7 @@ public class VentanaEstado extends JFrame {
 
         SwingUtilities.invokeLater(() -> {
             lblCiclo.setText("Ciclo: " + cicloActual[0]);
-            lblEstado.setText("Estado: " + textoEstado());
+            lblEstado.setText("Estado: " + textoEstado(hayTrabajo[0]));
             boolean faltaJson = simulador.isRequiereCargaJsonObligatoria() && !simulador.tieneAmbosJsonCargados();
             boolean esAdmin = panelArchivos.getModoSeleccionado().esAdministrador();
             btnIniciar.setEnabled(!iniciada && !detenida && !faltaJson);
@@ -429,7 +431,7 @@ public class VentanaEstado extends JFrame {
         });
     }
 
-    private String textoEstado() {
+    private String textoEstado(boolean hayTrabajo) {
         if (detenida) {
             return "detenida (haga clic en Reiniciar para comenzar de nuevo)";
         }
@@ -445,7 +447,7 @@ public class VentanaEstado extends JFrame {
         if (simulador.isLimiteAlcanzado()) {
             return "límite de ciclos alcanzado (detenida)";
         }
-        if (!simulador.hayTrabajoPendiente()) {
+        if (!hayTrabajo) {
             return "finalizada / ociosa (esperando nuevos procesos)";
         }
         return "en marcha";

@@ -122,18 +122,45 @@ public class VentanaGraficaDisco extends JDialog {
         if (!isVisible() && plot.getDataset().getSeriesCount() > 0) {
             return;
         }
-        DiscoSimulado disco = simulador.getDisco();
-        if (disco == null) {
+        DiscoSimulado[] discoRef = new DiscoSimulado[1];
+        @SuppressWarnings("unchecked")
+        ListaEnlazada<Long>[] histDespRef = new ListaEnlazada[1];
+        @SuppressWarnings("unchecked")
+        ListaEnlazada<PoliticaDisco>[] histPolRef = new ListaEnlazada[1];
+        long[] atendidasRef = new long[1];
+        long[] despTotalRef = new long[1];
+        boolean[] subeRef = new boolean[1];
+        int[] cabezalRef = new int[1];
+        double[] esperaPromRef = new double[1];
+        PoliticaDisco[] todas = PoliticaDisco.values();
+        long[] porPoliticaRef = new long[todas.length];
+
+        simulador.leerEstado(() -> {
+            DiscoSimulado disco = simulador.getDisco();
+            discoRef[0] = disco;
+            if (disco == null) {
+                return;
+            }
+            histDespRef[0] = disco.copiarHistorialDesplazamiento();
+            histPolRef[0] = disco.copiarHistorialPolitica();
+            atendidasRef[0] = disco.getTotalSolicitudesAtendidas();
+            despTotalRef[0] = disco.getDesplazamientoTotal();
+            subeRef[0] = disco.isDireccionAscendente();
+            cabezalRef[0] = disco.getPosicionCabezal();
+            esperaPromRef[0] = disco.getTiempoEsperaPromedio();
+            for (int i = 0; i < todas.length; i++) {
+                porPoliticaRef[i] = disco.getSolicitudesAtendidas(todas[i]);
+            }
+        });
+
+        if (discoRef[0] == null) {
             lblResumen.setText("No hay disco configurado en este simulador.");
             return;
         }
 
-        ListaEnlazada<Long> histDesp = disco.copiarHistorialDesplazamiento();
-        ListaEnlazada<PoliticaDisco> histPol = disco.copiarHistorialPolitica();
-
-        double[][] ptsDesp = SerieDesplazamiento.muestrear(histDesp, MAX_PUNTOS);
+        double[][] ptsDesp = SerieDesplazamiento.muestrear(histDespRef[0], MAX_PUNTOS);
         ListaEnlazada<SerieDesplazamiento.CambioPolitica> cambios =
-                SerieDesplazamiento.detectarCambiosPolitica(histPol);
+                SerieDesplazamiento.detectarCambiosPolitica(histPolRef[0]);
 
         XYSeries serieAcum = new XYSeries("Desplazamiento acumulado");
         for (int k = 0; k < ptsDesp[0].length; k++) {
@@ -150,24 +177,23 @@ public class VentanaGraficaDisco extends JDialog {
             return;
         }
 
-        long atendidas = disco.getTotalSolicitudesAtendidas();
-        long despTotal = disco.getDesplazamientoTotal();
+        long atendidas = atendidasRef[0];
+        long despTotal = despTotalRef[0];
         double promPorSol = (atendidas > 0) ? ((double) despTotal / atendidas) : 0.0;
-        String dir = disco.isDireccionAscendente() ? "↑" : "↓";
+        String dir = subeRef[0] ? "↑" : "↓";
 
         StringBuilder porPol = new StringBuilder();
-        PoliticaDisco[] todas = PoliticaDisco.values();
         for (int i = 0; i < todas.length; i++) {
             if (i > 0) {
                 porPol.append(' ');
             }
-            porPol.append(todas[i].getCodigoJson()).append('=').append(disco.getSolicitudesAtendidas(todas[i]));
+            porPol.append(todas[i].getCodigoJson()).append('=').append(porPoliticaRef[i]);
         }
 
         lblResumen.setText(String.format(
                 "Cabezal: blq %d (%s)  |  Atendidas: %d  |  Desplazamiento: %d blq (prom. %.1f blq/sol)  |  Espera prom.: %.1f c  |  %s",
-                disco.getPosicionCabezal(), dir, atendidas, despTotal, promPorSol,
-                disco.getTiempoEsperaPromedio(), porPol));
+                cabezalRef[0], dir, atendidas, despTotal, promPorSol,
+                esperaPromRef[0], porPol));
     }
 
     private void actualizarMarcadoresPolitica(XYPlot plot, ListaEnlazada<SerieDesplazamiento.CambioPolitica> cambios) {

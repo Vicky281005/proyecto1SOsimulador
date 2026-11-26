@@ -106,10 +106,10 @@ public class DiscoSimulado implements ComponenteReloj {
     /**
      * Reserva o ajusta el área de intercambio (Swap) para procesos suspendidos.
      *
-     * <p>Si los últimos {@code nuevoTamanoSwap} bloques de datos están libres, se
-     * reservan dentro de la capacidad actual del disco; si ya están ocupados por
-     * archivos precargados (por ejemplo desde el JSON del sistema de archivos),
-     * la zona Swap se anexa contiguamente para no sobrescribir archivos válidos.</p>
+     * <p>El área Swap se anexa siempre como una partición dedicada y contigua de
+     * {@code nuevoTamanoSwap} bloques inmediatamente después de los {@code totalBloquesDatos}
+     * bloques del sistema de archivos, preservando intactos los bloques de datos precargados
+     * (incluso cuando un JSON de sistema de archivos llena el 100 % de los bloques de datos).</p>
      *
      * @param nuevoTamanoSwap cantidad de bloques para Swap (>= 0).
      */
@@ -165,6 +165,41 @@ public class DiscoSimulado implements ComponenteReloj {
         mutex.acquireUninterruptibly();
         try {
             this.logEventos = logEventos;
+        } finally {
+            mutex.release();
+        }
+    }
+
+    /**
+     * Reinicia la cola de E/S, el área Swap y todas las métricas e historiales del disco
+     * para iniciar una nueva simulación preservando intactos los archivos y bloques de datos
+     * del sistema de archivos.
+     */
+    public void reiniciarParaNuevaSimulacion() {
+        mutex.acquireUninterruptibly();
+        try {
+            planificador.vaciar();
+            solicitudActual = null;
+            metaExtremoPendiente = -1;
+
+            for (int i = inicioAreaSwap; i < bloques.length; i++) {
+                if (bloques[i] != null && bloques[i].isAreaSwap() && bloques[i].isOcupado()) {
+                    bloques[i].liberar();
+                }
+            }
+
+            desplazamientoTotal = 0;
+            totalSolicitudesAtendidas = 0;
+            sumaTiemposEspera = 0;
+            for (int i = 0; i < solicitudesPorPolitica.length; i++) {
+                solicitudesPorPolitica[i] = 0;
+            }
+            historialDesplazamiento.vaciar();
+            historialPolitica.vaciar();
+
+            if (posicionCabezal >= totalBloquesDatos) {
+                posicionCabezal = Math.max(0, totalBloquesDatos - 1);
+            }
         } finally {
             mutex.release();
         }

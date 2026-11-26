@@ -264,6 +264,7 @@ public final class GestorPersistencia {
             throw new IllegalArgumentException("La configuración de procesos (JSON 2) no puede ser nula.");
         }
         procCfg.validarEstricto();
+        saPreservado.getDisco().reiniciarParaNuevaSimulacion();
         return ensamblarSimulador(saPreservado.getDisco(), saPreservado, procCfg);
     }
 
