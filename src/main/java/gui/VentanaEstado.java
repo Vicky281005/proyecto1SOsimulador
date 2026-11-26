@@ -152,6 +152,7 @@ public class VentanaEstado extends JFrame {
         setLayout(new BorderLayout(6, 6));
         add(barra, BorderLayout.NORTH);
         panelArchivos = new PanelExploradorArchivos(simulador);
+        panelArchivos.setEscuchaCambioModo(this::aplicarPermisosModoUsuario);
         javax.swing.JSplitPane splitCentral = new javax.swing.JSplitPane(
                 javax.swing.JSplitPane.HORIZONTAL_SPLIT,
                 new JScrollPane(centro),
@@ -236,8 +237,23 @@ public class VentanaEstado extends JFrame {
         if (ventanaDisco == null) {
             ventanaDisco = new VentanaDisco(this, simulador);
         }
+        ventanaDisco.setModoUsuario(panelArchivos.getModoSeleccionado());
         ventanaDisco.setVisible(true);
         ventanaDisco.toFront();
+    }
+
+    private void aplicarPermisosModoUsuario() {
+        enums.ModoUsuario modo = panelArchivos.getModoSeleccionado();
+        for (PanelComputador panel : paneles) {
+            panel.setModoUsuario(modo);
+        }
+        if (ventanaDisco != null) {
+            ventanaDisco.setModoUsuario(modo);
+        }
+        if (!modo.esAdministrador() && ventanaCrear != null && ventanaCrear.isVisible()) {
+            ventanaCrear.setVisible(false);
+        }
+        refrescar();
     }
 
     /** Abre la ventana de configuración y persistencia. */
@@ -357,12 +373,20 @@ public class VentanaEstado extends JFrame {
             lblCiclo.setText("Ciclo: " + cicloActual[0]);
             lblEstado.setText("Estado: " + textoEstado());
             boolean faltaJson = simulador.isRequiereCargaJsonObligatoria() && !simulador.tieneAmbosJsonCargados();
+            boolean esAdmin = panelArchivos.getModoSeleccionado().esAdministrador();
             btnIniciar.setEnabled(!iniciada && !detenida && !faltaJson);
             btnPausa.setEnabled(iniciada && !detenida && !simulador.isLimiteAlcanzado());
             btnPausa.setText(simulador.estaPausada() ? "Reanudar" : "Pausar");
             btnDetener.setEnabled(iniciada && !detenida);
             btnReiniciar.setEnabled(true);
-            btnCrear.setEnabled(!detenida && !simulador.isLimiteAlcanzado() && !faltaJson);
+            btnCrear.setEnabled(!detenida && !simulador.isLimiteAlcanzado() && !faltaJson && esAdmin);
+            btnCrear.setToolTipText(esAdmin
+                    ? "Crear un nuevo proceso manual"
+                    : "Gestionar procesos solo está permitido en Modo Administrador");
+            btnConfiguracion.setEnabled(esAdmin || faltaJson);
+            btnConfiguracion.setToolTipText((esAdmin || faltaJson)
+                    ? "Configuración y carga de JSON"
+                    : "Cambiar configuración y políticas solo está permitido en Modo Administrador");
             panelArchivos.setOperacionesHabilitadas(!detenida && !simulador.isLimiteAlcanzado() && !faltaJson);
 
             if (logSb.length() > 0) {

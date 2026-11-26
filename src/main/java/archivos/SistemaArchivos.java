@@ -175,7 +175,9 @@ public class SistemaArchivos implements ServicioArchivos {
             }
         }
 
-        PermisoArchivo permiso = modo.esAdministrador() ? PermisoArchivo.PUBLICO : PermisoArchivo.PRIVADO;
+        PermisoArchivo permiso = (modo.esAdministrador() && proceso.getPermisoSolicitado() != null)
+                ? proceso.getPermisoSolicitado()
+                : (modo.esAdministrador() ? PermisoArchivo.PUBLICO : PermisoArchivo.PRIVADO);
 
         if (esDirectorio) {
             SolicitudES sol = new SolicitudES(proceso, TipoOperacionES.CREAR, ruta, "",

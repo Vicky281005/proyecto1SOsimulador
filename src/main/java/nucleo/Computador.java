@@ -8,6 +8,7 @@ import enums.EstadoProceso;
 import enums.ModoCPU;
 import enums.ModoUsuario;
 import enums.MotivoBloqueo;
+import enums.PermisoArchivo;
 import enums.TipoInstruccion;
 import enums.TipoOperacionES;
 import enums.TipoProceso;
@@ -492,6 +493,14 @@ public class Computador implements ComponenteReloj {
     public PCB crearProcesoES(String nombreProceso, TipoOperacionES operacion, String ruta,
                               String nuevoNombre, int tamanoBloques, ModoUsuario modo,
                               String usuario, long cicloActual) {
+        return crearProcesoES(nombreProceso, operacion, ruta, nuevoNombre,
+                tamanoBloques, modo, usuario, null, cicloActual);
+    }
+
+    /** Variante que permite al Administrador especificar permiso inicial (Público o Privado). */
+    public PCB crearProcesoES(String nombreProceso, TipoOperacionES operacion, String ruta,
+                              String nuevoNombre, int tamanoBloques, ModoUsuario modo,
+                              String usuario, PermisoArchivo permisoSolicitado, long cicloActual) {
         if (operacion == null || !operacion.esOperacionArchivo()) {
             throw new IllegalArgumentException("La operación debe ser CREAR, LEER, ACTUALIZAR o ELIMINAR.");
         }
@@ -510,6 +519,7 @@ public class Computador implements ComponenteReloj {
         p.setNuevoNombre(nuevoNombre);
         p.setTamanoArchivoBloques(tamanoBloques);
         p.setModoSolicitante(modo);
+        p.setPermisoSolicitado(permisoSolicitado);
         p.setUsuario(usuario);
         recibirProceso(p);
         return p;

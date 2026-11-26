@@ -5,6 +5,7 @@ import archivos.SistemaArchivos;
 import disco.DiscoSimulado;
 import disco.OperacionRechazadaException;
 import enums.ModoUsuario;
+import enums.PermisoArchivo;
 import enums.TipoOperacionES;
 import estructuras.Iterador;
 import estructuras.ListaEnlazada;
@@ -71,7 +72,7 @@ public class PanelExploradorArchivos extends JPanel {
 
     private final JButton btnCrear = new JButton("Crear…");
     private final JButton btnLeer = new JButton("Leer");
-    private final JButton btnRenombrar = new JButton("Renombrar…");
+    private final JButton btnRenombrar = new JButton("Actualizar…");
     private final JButton btnEliminar = new JButton("Eliminar");
 
     private final DefaultMutableTreeNode nodoRaizVacio =
@@ -101,6 +102,7 @@ public class PanelExploradorArchivos extends JPanel {
     private boolean sincronizandoSeleccion = false;
     private boolean operacionesHabilitadas = true;
     private String mensajeUltimaAccion = "";
+    private Runnable escuchaCambioModo;
 
     public PanelExploradorArchivos(Simulador simulador) {
         this.simulador = simulador;
@@ -128,7 +130,7 @@ public class PanelExploradorArchivos extends JPanel {
         JPanel filaCrud = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 2));
         btnCrear.setToolTipText("Crear un nuevo archivo o directorio mediante proceso de E/S");
         btnLeer.setToolTipText("Leer el archivo seleccionado mediante proceso de E/S");
-        btnRenombrar.setToolTipText("Renombrar el archivo o directorio seleccionado");
+        btnRenombrar.setToolTipText("Actualizar (renombrar) el archivo o directorio seleccionado mediante proceso de E/S");
         btnEliminar.setToolTipText("Eliminar archivo o directorio (recursivo para directorios)");
         filaCrud.add(btnCrear);
         filaCrud.add(btnLeer);
@@ -278,16 +280,24 @@ public class PanelExploradorArchivos extends JPanel {
         if (modo.esAdministrador()) {
             txtUsuario.setText("admin");
             txtUsuario.setEditable(false);
-            lblModoInsignia.setText("Acceso completo (crear dirs/archivos, ver y borrar todo)");
+            lblModoInsignia.setText("Acceso completo (archivos, procesos y políticas)");
             lblModoInsignia.setForeground(COLOR_ADMIN);
         } else {
             if ("admin".equalsIgnoreCase(txtUsuario.getText().trim()) || txtUsuario.getText().trim().isEmpty()) {
                 txtUsuario.setText("user1");
             }
             txtUsuario.setEditable(true);
-            lblModoInsignia.setText("Acceso restringido (solo lectura pública o archivos propios)");
+            lblModoInsignia.setText("Solo lectura pública/propia y E/S propios (sin cambiar políticas)");
             lblModoInsignia.setForeground(COLOR_USUARIO);
         }
+        if (escuchaCambioModo != null) {
+            escuchaCambioModo.run();
+        }
+    }
+
+    /** Registra un oyente que se ejecuta cada vez que cambia el modo Administrador/Usuario. */
+    public void setEscuchaCambioModo(Runnable escucha) {
+        this.escuchaCambioModo = escucha;
     }
 
     /** Habilita o deshabilita las acciones CRUD (ej. al detener la simulación). */
@@ -614,9 +624,22 @@ public class PanelExploradorArchivos extends JPanel {
         rbArchivo.addActionListener(e -> spinBloques.setEnabled(true));
         rbDirectorio.addActionListener(e -> spinBloques.setEnabled(false));
 
+        JTextField campoDueno = new JTextField(usuario, 14);
+        campoDueno.setEditable(modo.esAdministrador());
+        campoDueno.setToolTipText(modo.esAdministrador()
+                ? "Puedes asignar la carpeta o archivo a un usuario (ej. user1)"
+                : "En modo Usuario el dueño es el usuario activo");
+        JComboBox<PermisoArchivo> comboPermiso = new JComboBox<>(PermisoArchivo.values());
+        comboPermiso.setSelectedItem(modo.esAdministrador() ? PermisoArchivo.PUBLICO : PermisoArchivo.PRIVADO);
+        comboPermiso.setEnabled(modo.esAdministrador());
+
         JPanel form = new JPanel(new GridLayout(0, 2, 6, 6));
-        form.add(new JLabel("Modo / Usuario:"));
-        form.add(new JLabel(modo.getEtiqueta() + " (" + usuario + ")"));
+        form.add(new JLabel("Modo actual:"));
+        form.add(new JLabel(modo.getEtiqueta()));
+        form.add(new JLabel("Asignar dueño:"));
+        form.add(campoDueno);
+        form.add(new JLabel("Permisos:"));
+        form.add(comboPermiso);
         form.add(new JLabel("Ruta completa:"));
         form.add(campoRuta);
         form.add(new JLabel("Tipo de entrada:"));
@@ -636,13 +659,17 @@ public class PanelExploradorArchivos extends JPanel {
         boolean esDir = rbDirectorio.isSelected();
         int tam = esDir ? 0 : (Integer) spinBloques.getValue();
         String ruta = campoRuta.getText().trim();
+        String duenoDestino = modo.esAdministrador() ? campoDueno.getText().trim() : usuario;
+        PermisoArchivo permisoElegido = modo.esAdministrador()
+                ? (PermisoArchivo) comboPermiso.getSelectedItem()
+                : PermisoArchivo.PRIVADO;
 
-        String error = validarOperacionGUI(sa, TipoOperacionES.CREAR, ruta, "", tam, modo, usuario, esDir);
+        String error = validarOperacionGUI(sa, TipoOperacionES.CREAR, ruta, "", tam, modo, duenoDestino, esDir);
         if (error != null) {
             mostrarErrorValidacion(error);
             return;
         }
-        encolarOperacion(TipoOperacionES.CREAR, ruta, "", tam, modo, usuario);
+        encolarOperacion(TipoOperacionES.CREAR, ruta, "", tam, modo, duenoDestino, permisoElegido);
     }
 
     private void accionLeer() {
@@ -716,6 +743,11 @@ public class PanelExploradorArchivos extends JPanel {
 
     private void encolarOperacion(TipoOperacionES op, String ruta, String nuevoNombre, int tamBloques,
                                   ModoUsuario modo, String usuario) {
+        encolarOperacion(op, ruta, nuevoNombre, tamBloques, modo, usuario, null);
+    }
+
+    private void encolarOperacion(TipoOperacionES op, String ruta, String nuevoNombre, int tamBloques,
+                                  ModoUsuario modo, String usuario, PermisoArchivo permisoSolicitado) {
         int idPc = obtenerIdComputadorPrincipal();
         if (idPc < 0) {
             mostrarErrorValidacion("No hay ningún computador registrado para ejecutar el proceso de E/S.");
@@ -724,7 +756,7 @@ public class PanelExploradorArchivos extends JPanel {
         try {
             String nombreProc = "GUI_" + op.getCodigoJson() + "_" + obtenerNombreBaseVisual(ruta);
             PCB creado = simulador.solicitarOperacionES(
-                    idPc, nombreProc, op, ruta, nuevoNombre, tamBloques, modo, usuario);
+                    idPc, nombreProc, op, ruta, nuevoNombre, tamBloques, modo, usuario, permisoSolicitado);
             mensajeUltimaAccion = "Encolado " + creado.getNombre()
                     + (simulador.estaEnMarcha() ? "" : " (pulsa Iniciar)");
             actualizar();

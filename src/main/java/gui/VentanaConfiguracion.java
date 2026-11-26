@@ -157,6 +157,10 @@ public class VentanaConfiguracion extends JFrame {
         pnlInferior.add(pnlIzq, BorderLayout.WEST);
         pnlInferior.add(pnlDer, BorderLayout.EAST);
 
+        // Ocultar la barra manual en la Pestaña 1 para evitar confusiones con la carga dual obligatoria
+        pnlInferior.setVisible(tabbedPane.getSelectedIndex() != 0);
+        tabbedPane.addChangeListener(e -> pnlInferior.setVisible(tabbedPane.getSelectedIndex() != 0));
+
         add(tabbedPane, BorderLayout.CENTER);
         add(pnlInferior, BorderLayout.SOUTH);
     }

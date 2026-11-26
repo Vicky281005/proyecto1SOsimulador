@@ -256,6 +256,17 @@ public class PersistenciaPrueba {
             asegurar(model.isCellEditable(0, 4), "Quantum editable al cambiar a Round Robin");
             model.setValueAt("5", 0, 4);
             asegurar(model.getLista().obtener(0).getQuantum() == 5, "Quantum actualizado a 5");
+
+            javax.swing.JTabbedPane tabs = (javax.swing.JTabbedPane) ((java.awt.BorderLayout) vc.getContentPane().getLayout())
+                    .getLayoutComponent(java.awt.BorderLayout.CENTER);
+            java.awt.Component pieManual = ((java.awt.BorderLayout) vc.getContentPane().getLayout())
+                    .getLayoutComponent(java.awt.BorderLayout.SOUTH);
+            asegurar(!pieManual.isVisible(), "Barra manual oculta en Pestaña 1 (Carga dual JSON)");
+            tabs.setSelectedIndex(1);
+            asegurar(pieManual.isVisible(), "Barra manual visible en Pestaña 2 (Computador y Disco)");
+            tabs.setSelectedIndex(0);
+            asegurar(!pieManual.isVisible(), "Barra manual vuelve a ocultarse al regresar a Pestaña 1");
+            vc.dispose();
         } finally {
             VentanaConfiguracion.setModoPrueba(false);
         }

@@ -2,6 +2,7 @@ package gui;
 
 import disco.DiscoSimulado;
 import disco.SolicitudES;
+import enums.ModoUsuario;
 import enums.PoliticaDisco;
 import estructuras.Iterador;
 import estructuras.ListaEnlazada;
@@ -49,6 +50,7 @@ public class VentanaDisco extends JDialog {
     private final JTextArea areaCola = new JTextArea(10, 34);
     private final Timer temporizador;
     private boolean actualizando;
+    private ModoUsuario modoUsuario = ModoUsuario.ADMINISTRADOR;
 
     /**
      * @param dueno     ventana que la abre.
@@ -72,13 +74,13 @@ public class VentanaDisco extends JDialog {
         control.add(spinVelocidad);
         comboPolitica.addActionListener(e -> {
             DiscoSimulado d = simulador.getDisco();
-            if (!actualizando && d != null) {
+            if (!actualizando && d != null && modoUsuario.esAdministrador()) {
                 d.setPolitica((PoliticaDisco) comboPolitica.getSelectedItem());
             }
         });
         spinVelocidad.addChangeListener(e -> {
             DiscoSimulado d = simulador.getDisco();
-            if (!actualizando && d != null) {
+            if (!actualizando && d != null && modoUsuario.esAdministrador()) {
                 d.setVelocidadCabezal((Integer) spinVelocidad.getValue());
             }
         });
@@ -179,8 +181,7 @@ public class VentanaDisco extends JDialog {
             spinVelocidad.setEnabled(false);
             return;
         }
-        comboPolitica.setEnabled(true);
-        spinVelocidad.setEnabled(true);
+        aplicarPermisosModo(d != null);
 
         int cabezal = d.getPosicionCabezal();
         boolean sube = d.isDireccionAscendente();
@@ -242,6 +243,22 @@ public class VentanaDisco extends JDialog {
         lblPorPolitica.setText(pp.toString());
         areaCola.setText(cola.toString());
         areaCola.setCaretPosition(0);
+    }
+
+    /** Habilita o deshabilita el cambio de política/velocidad según el modo Administrador o Usuario. */
+    public void setModoUsuario(ModoUsuario modo) {
+        this.modoUsuario = (modo != null) ? modo : ModoUsuario.ADMINISTRADOR;
+        aplicarPermisosModo(simulador.getDisco() != null);
+    }
+
+    private void aplicarPermisosModo(boolean hayDisco) {
+        boolean esAdmin = modoUsuario.esAdministrador();
+        boolean habilitar = hayDisco && esAdmin;
+        comboPolitica.setEnabled(habilitar);
+        spinVelocidad.setEnabled(habilitar);
+        String tip = (!hayDisco || esAdmin) ? null : "Solo permitido en Modo Administrador";
+        comboPolitica.setToolTipText(tip);
+        spinVelocidad.setToolTipText(tip);
     }
 
     /** Texto de la cola mostrada (para las pruebas). */

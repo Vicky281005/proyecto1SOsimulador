@@ -1,5 +1,6 @@
 package gui;
 
+import enums.ModoUsuario;
 import enums.PoliticaPlanificacion;
 import estructuras.Iterador;
 import hardware.CPU;
@@ -60,6 +61,8 @@ public class PanelComputador extends JPanel {
     private boolean ajustandoCombo;
     /** Evita que modificar el spinner por código dispare un cambio real. */
     private boolean ajustandoQuantum;
+    /** Controla si el usuario activo tiene permiso para cambiar políticas de CPU. */
+    private ModoUsuario modoUsuario = ModoUsuario.ADMINISTRADOR;
 
     /**
      * @param computador computador que se muestra.
@@ -161,18 +164,34 @@ public class PanelComputador extends JPanel {
 
         // Sincronizar estado del control de Quantum
         if (computador.getPlanificador().getPolitica() instanceof planificacion.RoundRobin rr) {
-            lblQuantum.setEnabled(true);
-            spinnerQuantum.setEnabled(true);
             int q = rr.getQuantum();
             if (!ajustandoQuantum && ((Integer) spinnerQuantum.getValue()) != q) {
                 ajustandoQuantum = true;
                 spinnerQuantum.setValue(q);
                 ajustandoQuantum = false;
             }
-        } else {
-            lblQuantum.setEnabled(false);
-            spinnerQuantum.setEnabled(false);
         }
+        aplicarPermisosModo();
+    }
+
+    /** Habilita o restringe el cambio de política/quantum según el modo Administrador o Usuario. */
+    public void setModoUsuario(ModoUsuario modo) {
+        this.modoUsuario = (modo != null) ? modo : ModoUsuario.ADMINISTRADOR;
+        aplicarPermisosModo();
+    }
+
+    private void aplicarPermisosModo() {
+        boolean esAdmin = modoUsuario.esAdministrador();
+        boolean esRR = computador.getPlanificador().getPolitica() instanceof planificacion.RoundRobin;
+        comboPolitica.setEnabled(esAdmin);
+        comboPolitica.setToolTipText(esAdmin
+                ? "Cambiar política de planificación de CPU"
+                : "Solo permitido en Modo Administrador");
+        lblQuantum.setEnabled(esAdmin && esRR);
+        spinnerQuantum.setEnabled(esAdmin && esRR);
+        spinnerQuantum.setToolTipText(esAdmin
+                ? "Ajustar quantum de Round Robin"
+                : "Solo permitido en Modo Administrador");
     }
 
     /** Convierte una cola de procesos en líneas de texto, una por proceso. */
@@ -230,10 +249,11 @@ public class PanelComputador extends JPanel {
             }
         }
         ajustandoCombo = false;
+        aplicarPermisosModo();
     }
 
     private void cambiarPolitica() {
-        if (ajustandoCombo) {
+        if (ajustandoCombo || !modoUsuario.esAdministrador()) {
             return;
         }
         PoliticaPlanificacion elegida = (PoliticaPlanificacion) comboPolitica.getSelectedItem();
@@ -259,7 +279,8 @@ public class PanelComputador extends JPanel {
     }
 
     private void cambiarQuantum() {
-        if (ajustandoQuantum || comboPolitica.getSelectedItem() != PoliticaPlanificacion.ROUND_ROBIN) {
+        if (ajustandoQuantum || !modoUsuario.esAdministrador()
+                || comboPolitica.getSelectedItem() != PoliticaPlanificacion.ROUND_ROBIN) {
             return;
         }
         int nuevoQ = (Integer) spinnerQuantum.getValue();

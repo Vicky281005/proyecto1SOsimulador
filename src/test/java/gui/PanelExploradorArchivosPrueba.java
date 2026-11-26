@@ -144,6 +144,66 @@ public class PanelExploradorArchivosPrueba {
                     "Tras ejecutar DELETE de /usuarios/img1.png, la JTable pasa en tiempo real a 8 archivos");
         });
 
+        // Admin asigna un directorio a 'user1' con permiso PRIVADO, y luego 'user1' puede crear archivos dentro
+        simActivo.solicitarOperacionES(1, "AdminCreaDirUser1", TipoOperacionES.CREAR,
+                "/usuarios/carpeta_u1", "", 0, ModoUsuario.ADMINISTRADOR, "admin",
+                enums.PermisoArchivo.PUBLICO); // primero probamos crear asignado a user1 abajo
+        simActivo.solicitarOperacionES(1, "AdminAsignaDirUser1", TipoOperacionES.CREAR,
+                "/usuarios/u1", "", 0, ModoUsuario.ADMINISTRADOR, "user1",
+                enums.PermisoArchivo.PRIVADO);
+        simActivo.ejecutar();
+        archivos.NodoArchivo dirU1 = sa.buscarPorRuta("/usuarios/u1");
+        verificar(dirU1 != null && dirU1.esDirectorio() && "user1".equals(dirU1.getDueno())
+                && dirU1.getPermiso() == enums.PermisoArchivo.PRIVADO,
+                "Admin puede crear directorio asignado a 'user1' con permiso Privado");
+        verificar(PanelExploradorArchivos.validarOperacionGUI(
+                sa, TipoOperacionES.CREAR, "/usuarios/u1/mi_doc.txt", "", 2, ModoUsuario.USUARIO, "user1", false) == null,
+                "Luego 'user1' en Modo Usuario SÍ puede crear archivo dentro de su directorio asignado");
+        verificar(PanelExploradorArchivos.validarOperacionGUI(
+                sa, TipoOperacionES.CREAR, "/usuarios/u1/intruso.txt", "", 2, ModoUsuario.USUARIO, "user2", false) != null,
+                "'user2' en Modo Usuario NO puede crear archivo dentro del directorio de 'user1'");
+
+        SwingUtilities.invokeAndWait(() -> {
+            PanelExploradorArchivos panelTrasSim = new PanelExploradorArchivos(simActivo);
+
+            try {
+                java.lang.reflect.Field fBtnAct = PanelExploradorArchivos.class.getDeclaredField("btnRenombrar");
+                fBtnAct.setAccessible(true);
+                javax.swing.JButton btnAct = (javax.swing.JButton) fBtnAct.get(panelTrasSim);
+                verificar("Actualizar…".equals(btnAct.getText()),
+                        "El botón de operación UPDATE dice literalmente 'Actualizar…'");
+
+                nucleo.Computador pc = simActivo.buscarComputador(1);
+                PanelComputador pPc = new PanelComputador(pc, simActivo);
+                java.lang.reflect.Field fPolPc = PanelComputador.class.getDeclaredField("comboPolitica");
+                fPolPc.setAccessible(true);
+                javax.swing.JComboBox<?> comboPc = (javax.swing.JComboBox<?>) fPolPc.get(pPc);
+                pPc.setModoUsuario(ModoUsuario.USUARIO);
+                verificar(!comboPc.isEnabled(), "En Modo Usuario se bloquea el cambio de política de CPU");
+                pPc.setModoUsuario(ModoUsuario.ADMINISTRADOR);
+                verificar(comboPc.isEnabled(), "En Modo Administrador se habilita el cambio de política de CPU");
+
+                if (!java.awt.GraphicsEnvironment.isHeadless()) {
+                    VentanaDisco vd = new VentanaDisco(null, simActivo);
+                    java.lang.reflect.Field fPolDisco = VentanaDisco.class.getDeclaredField("comboPolitica");
+                    fPolDisco.setAccessible(true);
+                    java.lang.reflect.Field fVelDisco = VentanaDisco.class.getDeclaredField("spinVelocidad");
+                    fVelDisco.setAccessible(true);
+                    javax.swing.JComboBox<?> comboDisco = (javax.swing.JComboBox<?>) fPolDisco.get(vd);
+                    javax.swing.JSpinner spinDisco = (javax.swing.JSpinner) fVelDisco.get(vd);
+                    vd.setModoUsuario(ModoUsuario.USUARIO);
+                    verificar(!comboDisco.isEnabled() && !spinDisco.isEnabled(),
+                            "En Modo Usuario se bloquea el cambio de política y velocidad de disco");
+                    vd.setModoUsuario(ModoUsuario.ADMINISTRADOR);
+                    verificar(comboDisco.isEnabled() && spinDisco.isEnabled(),
+                            "En Modo Administrador se habilita el cambio de política y velocidad de disco");
+                    vd.dispose();
+                }
+            } catch (ReflectiveOperationException e) {
+                throw new RuntimeException(e);
+            }
+        });
+
         System.out.println("\n  Total: " + (ok + fallos) + " | Exitosas: " + ok + " | Fallidas: " + fallos);
         if (fallos > 0) {
             System.exit(1);

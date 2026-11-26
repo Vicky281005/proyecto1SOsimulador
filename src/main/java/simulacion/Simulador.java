@@ -5,6 +5,7 @@ import disco.EscuchaFinES;
 import disco.ServicioArchivos;
 import disco.SolicitudES;
 import enums.ModoUsuario;
+import enums.PermisoArchivo;
 import enums.TipoOperacionES;
 import estructuras.Iterador;
 import estructuras.ListaEnlazada;
@@ -303,6 +304,14 @@ public class Simulador implements EscuchaFinES {
     public PCB solicitarOperacionES(int idComputador, String nombreProceso, TipoOperacionES operacion,
                                     String ruta, String nuevoNombre, int tamanoBloques,
                                     ModoUsuario modo, String usuario) {
+        return solicitarOperacionES(idComputador, nombreProceso, operacion, ruta, nuevoNombre,
+                tamanoBloques, modo, usuario, null);
+    }
+
+    /** Variante que permite indicar el permiso explícito al crear archivos/directorios como Administrador. */
+    public PCB solicitarOperacionES(int idComputador, String nombreProceso, TipoOperacionES operacion,
+                                    String ruta, String nuevoNombre, int tamanoBloques,
+                                    ModoUsuario modo, String usuario, PermisoArchivo permisoSolicitado) {
         mutexEstado.acquireUninterruptibly();
         try {
             Computador destino = buscarComputador(idComputador);
@@ -310,7 +319,7 @@ public class Simulador implements EscuchaFinES {
                 throw new IllegalArgumentException("No existe un computador con id " + idComputador + ".");
             }
             return destino.crearProcesoES(nombreProceso, operacion, ruta, nuevoNombre,
-                    tamanoBloques, modo, usuario, reloj.getCicloActual());
+                    tamanoBloques, modo, usuario, permisoSolicitado, reloj.getCicloActual());
         } finally {
             mutexEstado.release();
         }

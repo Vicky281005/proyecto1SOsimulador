@@ -3,6 +3,7 @@ package modelo;
 import enums.EstadoProceso;
 import enums.ModoUsuario;
 import enums.MotivoBloqueo;
+import enums.PermisoArchivo;
 import enums.TipoOperacionES;
 import enums.TipoProceso;
 import estructuras.ListaEnlazada;
@@ -72,6 +73,7 @@ public class PCB {
     private int tamanoArchivoBloques;        // bloques a asignar en un CREAR
     private String nuevoNombre = "";         // nuevo nombre en un ACTUALIZAR (renombrar)
     private ModoUsuario modoSolicitante = ModoUsuario.ADMINISTRADOR;
+    private PermisoArchivo permisoSolicitado; // opcional: permite al Admin crear como Público o Privado
     private String usuario = "admin";        // dueño/solicitante de la operación
     private boolean esperandoDisco;          // bloqueado esperando que el disco termine
     private String rechazoES = "";           // motivo si el sistema de archivos rechazó la operación
@@ -312,6 +314,11 @@ public class PCB {
     public ModoUsuario getModoSolicitante() { return modoSolicitante; }
     public void setModoSolicitante(ModoUsuario modoSolicitante) {
         this.modoSolicitante = modoSolicitante == null ? ModoUsuario.ADMINISTRADOR : modoSolicitante;
+    }
+
+    public PermisoArchivo getPermisoSolicitado() { return permisoSolicitado; }
+    public void setPermisoSolicitado(PermisoArchivo permisoSolicitado) {
+        this.permisoSolicitado = permisoSolicitado;
     }
 
     public String getUsuario() { return usuario; }
