@@ -187,7 +187,7 @@ public class VentanaEstado extends JFrame {
             return;
         }
         if (simulador.isRequiereCargaJsonObligatoria() && !simulador.tieneAmbosJsonCargados()) {
-            JOptionPane.showMessageDialog(this,
+            mostrarMensajeAlFrente(this,
                     "Debe cargar obligatoriamente ambos archivos JSON (Sistema de Archivos y Procesos/Configuración)\n"
                     + "antes de iniciar el reloj global de ÁvilaOS.",
                     "Carga de JSON obligatoria", JOptionPane.WARNING_MESSAGE);
@@ -291,11 +291,10 @@ public class VentanaEstado extends JFrame {
     }
 
     private void reiniciar() {
-        toFront();
-        int confirm = JOptionPane.showConfirmDialog(this,
+        int confirm = mostrarConfirmacionAlFrente(this,
                 "¿Desea reiniciar la simulación al escenario inicial?",
                 "Reiniciar Simulación",
-                JOptionPane.YES_NO_OPTION);
+                JOptionPane.YES_NO_OPTION, JOptionPane.QUESTION_MESSAGE);
         if (confirm != JOptionPane.YES_OPTION) {
             return;
         }
@@ -345,6 +344,45 @@ public class VentanaEstado extends JFrame {
         cerrarVentanasHijas();
         simulador.detener();
         dispose();
+    }
+
+    /**
+     * Muestra un diálogo de confirmación modal siempre al frente (evita que en macOS
+     * quede oculto detrás de diálogos flotantes como {@link VentanaDisco}).
+     */
+    static int mostrarConfirmacionAlFrente(java.awt.Component padre, Object mensaje, String titulo,
+                                           int tipoOpcion, int tipoMensaje) {
+        JOptionPane pane = new JOptionPane(mensaje, tipoMensaje, tipoOpcion);
+        javax.swing.JDialog d = pane.createDialog(padre, titulo);
+        d.setAlwaysOnTop(true);
+        d.setVisible(true);
+        d.dispose();
+        Object val = pane.getValue();
+        return (val instanceof Integer i) ? i : JOptionPane.CLOSED_OPTION;
+    }
+
+    static void mostrarMensajeAlFrente(java.awt.Component padre, Object mensaje, String titulo, int tipoMensaje) {
+        JOptionPane pane = new JOptionPane(mensaje, tipoMensaje);
+        javax.swing.JDialog d = pane.createDialog(padre, titulo);
+        d.setAlwaysOnTop(true);
+        d.setVisible(true);
+        d.dispose();
+    }
+
+    static String mostrarEntradaAlFrente(java.awt.Component padre, Object mensaje, String valorInicial) {
+        JOptionPane pane = new JOptionPane(mensaje, JOptionPane.QUESTION_MESSAGE, JOptionPane.OK_CANCEL_OPTION);
+        pane.setWantsInput(true);
+        pane.setInitialSelectionValue(valorInicial);
+        javax.swing.JDialog d = pane.createDialog(padre, "Entrada");
+        d.setAlwaysOnTop(true);
+        d.setVisible(true);
+        d.dispose();
+        Object btn = pane.getValue();
+        if (!(btn instanceof Integer i) || i != JOptionPane.OK_OPTION) {
+            return null;
+        }
+        Object val = pane.getInputValue();
+        return (val == JOptionPane.UNINITIALIZED_VALUE || val == null) ? null : val.toString();
     }
 
     /**

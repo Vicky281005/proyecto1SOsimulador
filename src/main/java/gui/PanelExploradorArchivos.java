@@ -737,7 +737,7 @@ public class PanelExploradorArchivos extends JPanel {
         form.add(new JLabel("Tamaño (bloques):"));
         form.add(spinBloques);
 
-        int res = JOptionPane.showConfirmDialog(this, form, "Crear archivo o directorio (E/S)",
+        int res = VentanaEstado.mostrarConfirmacionAlFrente(this, form, "Crear archivo o directorio (E/S)",
                 JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE);
         if (res != JOptionPane.OK_OPTION) {
             return;
@@ -793,7 +793,7 @@ public class PanelExploradorArchivos extends JPanel {
             return;
         }
 
-        String nuevoNombre = JOptionPane.showInputDialog(this,
+        String nuevoNombre = VentanaEstado.mostrarEntradaAlFrente(this,
                 "Nuevo nombre para '" + sel.getRuta() + "':", sel.getNombre());
         if (nuevoNombre == null) {
             return;
@@ -832,7 +832,7 @@ public class PanelExploradorArchivos extends JPanel {
         String tipoDesc = sel.esDirectorio()
                 ? "el directorio '" + sel.getRuta() + "' y todo su contenido recursivamente"
                 : "el archivo '" + sel.getRuta() + "'";
-        int confirm = JOptionPane.showConfirmDialog(this,
+        int confirm = VentanaEstado.mostrarConfirmacionAlFrente(this,
                 "¿Encolar proceso de E/S para eliminar " + tipoDesc + "?",
                 "Confirmar eliminación", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
         if (confirm != JOptionPane.YES_OPTION) {
@@ -942,7 +942,7 @@ public class PanelExploradorArchivos extends JPanel {
                     simulacion.LogEventos.TipoEvento.RECHAZO_ES,
                     "GUI [" + getModoSeleccionado().getEtiqueta() + "/" + getUsuarioActivo() + "]: " + mensaje);
         }
-        JOptionPane.showMessageDialog(this, mensaje, "Validación de archivos y permisos", JOptionPane.WARNING_MESSAGE);
+        VentanaEstado.mostrarMensajeAlFrente(this, mensaje, "Validación de archivos y permisos", JOptionPane.WARNING_MESSAGE);
     }
 
     private static String obtenerPadreVisual(String rutaNorm) {
