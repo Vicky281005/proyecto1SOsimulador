@@ -286,12 +286,12 @@ public class Computador implements ComponenteReloj {
      * alto), porque es el que menos daño hace al sistema; a igual prioridad, el que
      * lleva MÁS ciclos bloqueado, porque es el que menos probable regresa pronto.
      */
-    private PCB elegirVictima() {
+    private PCB elegirVictima(ListaEnlazada<PCB> excluidos) {
         PCB mejor = null;
         Iterador<PCB> it = bloqueados.iterador();
         while (it.haySiguiente()) {
             PCB p = it.siguiente();
-            if (!esCandidatoASuspender(p)) {
+            if (!esCandidatoASuspender(p) || (excluidos != null && excluidos.contiene(p))) {
                 continue;
             }
             if (mejor == null
@@ -306,28 +306,31 @@ public class Computador implements ComponenteReloj {
 
     /**
      * Intenta hacer espacio en la RAM para admitir un proceso nuevo suspendiendo
-     * bloqueados. No suspende nada si, aun suspendiendo a todos los candidatos,
-     * el proceso no cabría o el swap no alcanza.
+     * bloqueados. Pre-selecciona la secuencia exacta de víctimas y verifica que el
+     * swap alcance para TODAS antes de suspender la primera (evita suspensiones parciales).
      */
     private boolean liberarMemoriaSuspendiendo(PCB nuevo, long cicloActual) {
         if (disco == null || nuevo.getMemoriaAsignada() > memoriaTotal) {
             return false;
         }
-        long faltante = nuevo.getMemoriaAsignada() - memoriaDisponible;
-        long recuperable = 0;
-        Iterador<PCB> it = bloqueados.iterador();
-        while (it.haySiguiente()) {
-            PCB p = it.siguiente();
-            if (esCandidatoASuspender(p)) {
-                recuperable += p.getMemoriaAsignada();
+        ListaEnlazada<PCB> seleccionadas = new ListaEnlazada<>();
+        long memoriaProyectada = memoriaDisponible;
+        long swapRequerido = 0;
+        while (memoriaProyectada < nuevo.getMemoriaAsignada()) {
+            PCB victima = elegirVictima(seleccionadas);
+            if (victima == null) {
+                return false;
             }
+            seleccionadas.agregar(victima);
+            memoriaProyectada += victima.getMemoriaAsignada();
+            swapRequerido += victima.getMemoriaAsignada();
         }
-        if (recuperable < faltante || disco.getBloquesLibresSwap() < faltante) {
+        if (swapRequerido > disco.getBloquesLibresSwap()) {
             return false;
         }
-        while (memoriaDisponible < nuevo.getMemoriaAsignada()) {
-            PCB victima = elegirVictima();
-            if (victima == null || !suspender(victima, nuevo, cicloActual)) {
+        Iterador<PCB> itSel = seleccionadas.iterador();
+        while (itSel.haySiguiente()) {
+            if (!suspender(itSel.siguiente(), nuevo, cicloActual)) {
                 return false;
             }
         }
@@ -345,6 +348,7 @@ public class Computador implements ComponenteReloj {
             return false;
         }
         victima.asignarSwap(primerBloque, cantidad);
+        victima.setEscrituraSwapPendiente(true);
         bloqueados.eliminar(victima);
         victima.setEstado(EstadoProceso.BLOQUEADO_SUSPENDIDO);
         bloqueadosSuspendidos.agregar(victima);
@@ -386,6 +390,7 @@ public class Computador implements ComponenteReloj {
                 }
             }
         }
+        simulacion.LogEventos log = (simulador != null) ? simulador.getLogEventos() : null;
         Iterador<PCB> itC = cumplidos.iterador();
         while (itC.haySiguiente()) {
             PCB p = itC.siguiente();
@@ -393,13 +398,19 @@ public class Computador implements ComponenteReloj {
             p.setCiclosBloqueoRestantes(0);
             p.setEstado(EstadoProceso.LISTO_SUSPENDIDO);
             listosSuspendidos.agregar(p);
+            if (log != null) {
+                log.registrar(simulacion.LogEventos.TipoEvento.DESBLOQUEO,
+                        "Evento E/S completado para " + p.getNombre() + " en " + nombre
+                                + ": pasa de Bloqueado/Suspendido a Listo/Suspendido");
+            }
         }
     }
 
     /**
      * Cuando hay RAM libre, trae de vuelta desde el swap al Listo/Suspendido de mayor
-     * prioridad que quepa. Tienen preferencia sobre los procesos Nuevos. La reactivación
-     * también es una solicitud al disco (lectura del swap); se reserva la RAM de inmediato.
+     * prioridad que quepa (y cuya escritura en swap ya concluyó). Tienen preferencia sobre
+     * los procesos Nuevos. La reactivación también es una solicitud al disco (lectura del swap);
+     * se reserva la RAM de inmediato.
      */
     private void reactivarSiHayMemoria(long cicloActual) {
         if (disco == null || reactivandoEnCurso != null || listosSuspendidos.estaVacia()) {
@@ -409,7 +420,8 @@ public class Computador implements ComponenteReloj {
         Iterador<PCB> it = listosSuspendidos.iterador();
         while (it.haySiguiente()) {
             PCB p = it.siguiente();
-            if (p != null && p.getMemoriaAsignada() <= memoriaDisponible
+            if (p != null && !p.isEscrituraSwapPendiente()
+                    && p.getMemoriaAsignada() <= memoriaDisponible
                     && p.getPrimerBloqueSwap() != PCB.SIN_ASIGNAR
                     && (elegido == null || p.getPrioridad() < elegido.getPrioridad())) {
                 elegido = p;
@@ -435,6 +447,9 @@ public class Computador implements ComponenteReloj {
         PCB p = sol.getProceso();
         simulacion.LogEventos log = (simulador != null) ? simulador.getLogEventos() : null;
         if (sol.getOperacion() == TipoOperacionES.SUSPENDER) {
+            if (p != null) {
+                p.setEscrituraSwapPendiente(false);
+            }
             if (log != null && p != null) {
                 log.registrar(simulacion.LogEventos.TipoEvento.SUSPENSION,
                         "Suspensión completada: " + p.getNombre() + " ya está escrito en el swap");
@@ -596,18 +611,23 @@ public class Computador implements ComponenteReloj {
                 completarSwap(sol, fin.exito, cicloActual);
                 continue;
             }
+            PCB p = sol.getProceso();
+            if (p == null || p.getEstado() == EstadoProceso.TERMINADO) {
+                if (servicioArchivos != null) {
+                    servicioArchivos.completar(sol, false);
+                }
+                continue;
+            }
             if (servicioArchivos != null) {
                 servicioArchivos.completar(sol, fin.exito);
             }
-            PCB p = sol.getProceso();
-            if (p == null || p.getEstado() == EstadoProceso.TERMINADO) {
-                continue;
-            }
             p.setEsperandoDisco(false);
+            boolean pasoAListoSuspendido = false;
             if (p.getEstado() == EstadoProceso.BLOQUEADO_SUSPENDIDO) {
                 bloqueadosSuspendidos.eliminar(p);
                 p.setEstado(EstadoProceso.LISTO_SUSPENDIDO);
                 listosSuspendidos.agregar(p);
+                pasoAListoSuspendido = true;
             } else if (p.getEstado() == EstadoProceso.BLOQUEADO) {
                 bloqueados.eliminar(p);
                 p.setEstado(EstadoProceso.LISTO);
@@ -619,9 +639,13 @@ public class Computador implements ComponenteReloj {
             }
             simulacion.LogEventos log = (simulador != null) ? simulador.getLogEventos() : null;
             if (log != null) {
+                String destinoEstado = pasoAListoSuspendido
+                        ? " (pasa de Bloqueado/Suspendido a Listo/Suspendido)"
+                        : "";
                 log.registrar(simulacion.LogEventos.TipoEvento.DESBLOQUEO,
                         "Desbloqueado " + p.getNombre() + " en " + nombre
-                                + " tras completar la operación de disco (" + (fin.exito ? "éxito" : "con error") + ")");
+                                + " tras completar la operación de disco (" + (fin.exito ? "éxito" : "con error") + ")"
+                                + destinoEstado);
             }
         }
     }

@@ -53,6 +53,7 @@ public class ConfigSistemaArchivos {
         private String type;
         private Integer startBlock;
         private Integer blocks;
+        private ListaEnlazada<Integer> blockChain;
         private String owner;
         private String permissions;
 
@@ -61,10 +62,16 @@ public class ConfigSistemaArchivos {
 
         public EntradaArchivo(String path, String type, Integer startBlock, Integer blocks,
                               String owner, String permissions) {
+            this(path, type, startBlock, blocks, null, owner, permissions);
+        }
+
+        public EntradaArchivo(String path, String type, Integer startBlock, Integer blocks,
+                              ListaEnlazada<Integer> blockChain, String owner, String permissions) {
             this.path = path;
             this.type = type;
             this.startBlock = startBlock;
             this.blocks = blocks;
+            this.blockChain = blockChain;
             this.owner = owner;
             this.permissions = permissions;
         }
@@ -99,6 +106,14 @@ public class ConfigSistemaArchivos {
 
         public void setBlocks(Integer blocks) {
             this.blocks = blocks;
+        }
+
+        public ListaEnlazada<Integer> getBlockChain() {
+            return blockChain;
+        }
+
+        public void setBlockChain(ListaEnlazada<Integer> blockChain) {
+            this.blockChain = blockChain;
         }
 
         public String getOwner() {
@@ -211,8 +226,31 @@ public class ConfigSistemaArchivos {
                 }
                 int inicio = e.getStartBlock();
                 int cant = e.getBlocks();
+                ListaEnlazada<Integer> cadena = e.getBlockChain();
                 if (cant <= 0) {
                     errores.agregar("El archivo '" + norm + "' debe ocupar al menos 1 bloque.");
+                } else if (cadena != null && !cadena.estaVacia()) {
+                    if (cadena.getTamano() != cant) {
+                        errores.agregar("La cadena 'blockChain' del archivo '" + norm + "' tiene "
+                                + cadena.getTamano() + " bloques pero 'blocks' indica " + cant + ".");
+                    } else if (cadena.obtener(0) == null || cadena.obtener(0) != inicio) {
+                        errores.agregar("El primer bloque de 'blockChain' en '" + norm
+                                + "' no coincide con 'startBlock' (" + inicio + ").");
+                    } else {
+                        for (int k = 0; k < cadena.getTamano(); k++) {
+                            Integer b = cadena.obtener(k);
+                            if (b == null || b < 0 || b >= totalBloques) {
+                                errores.agregar("Bloque fuera de rango (" + b + ") en 'blockChain' de '" + norm + "'.");
+                                break;
+                            }
+                            if (bloquesUsados[b]) {
+                                errores.agregar("Solapamiento de bloques en el bloque " + b
+                                        + " al validar el archivo '" + norm + "'.");
+                                break;
+                            }
+                            bloquesUsados[b] = true;
+                        }
+                    }
                 } else if (inicio < 0 || inicio + cant > totalBloques) {
                     errores.agregar("El archivo '" + norm + "' [" + inicio + ".." + (inicio + cant - 1)
                             + "] excede 'totalBlocks' (" + totalBloques + ").");
@@ -279,6 +317,7 @@ public class ConfigSistemaArchivos {
                         TipoNodoArchivo.ARCHIVO,
                         e.getStartBlock(),
                         e.getBlocks(),
+                        e.getBlockChain(),
                         (e.getOwner() != null && !e.getOwner().isBlank()) ? e.getOwner() : "admin",
                         PermisoArchivo.desdeTexto(e.getPermissions()));
             }
@@ -294,7 +333,8 @@ public class ConfigSistemaArchivos {
             throw new IllegalArgumentException("El SistemaArchivos y su DiscoSimulado no pueden ser nulos.");
         }
         DiscoSimulado disco = sa.getDisco();
-        DiskConfig dc = new DiskConfig(disco.getTotalBloquesDatos(), disco.getPosicionCabezal());
+        int headValido = Math.max(0, Math.min(disco.getPosicionCabezal(), Math.max(0, disco.getTotalBloquesDatos() - 1)));
+        DiskConfig dc = new DiskConfig(disco.getTotalBloquesDatos(), headValido);
         ListaEnlazada<EntradaArchivo> entradas = new ListaEnlazada<>();
 
         ListaEnlazada<NodoArchivo> nodos = sa.listarEntradasSinRaiz();
@@ -307,19 +347,37 @@ public class ConfigSistemaArchivos {
                         TipoNodoArchivo.DIRECTORIO.getCodigoJson(),
                         null,
                         null,
+                        null,
                         n.getDueno(),
                         n.getPermiso().getCodigoJson()));
             } else {
+                ListaEnlazada<Integer> cadenaReal = disco.obtenerCadenaBloques(n.getPrimerBloque());
+                ListaEnlazada<Integer> cadenaExportar = esCadenaContigua(cadenaReal, n.getPrimerBloque(), n.getTamanoBloques())
+                        ? null : cadenaReal;
                 entradas.agregar(new EntradaArchivo(
                         n.getRuta(),
                         TipoNodoArchivo.ARCHIVO.getCodigoJson(),
                         n.getPrimerBloque(),
                         n.getTamanoBloques(),
+                        cadenaExportar,
                         n.getDueno(),
                         n.getPermiso().getCodigoJson()));
             }
         }
         return new ConfigSistemaArchivos(dc, entradas);
+    }
+
+    private static boolean esCadenaContigua(ListaEnlazada<Integer> cadena, int inicio, int cantidad) {
+        if (cadena == null || cadena.getTamano() != cantidad) {
+            return false;
+        }
+        for (int i = 0; i < cantidad; i++) {
+            Integer b = cadena.obtener(i);
+            if (b == null || b != inicio + i) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private static boolean contieneTexto(ListaEnlazada<String> lista, String objetivo) {

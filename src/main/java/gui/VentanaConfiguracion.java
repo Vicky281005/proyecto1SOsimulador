@@ -409,6 +409,7 @@ public class VentanaConfiguracion extends JFrame {
             return;
         }
         try {
+            procCargado.validarEstricto();
             if (simuladorExistente != null) {
                 simuladorExistente.detener();
             }
@@ -549,6 +550,9 @@ public class VentanaConfiguracion extends JFrame {
             TipoOperacionES op = (opSel != null && !opSel.startsWith("(")) ? TipoOperacionES.desdeTexto(opSel) : null;
             String ruta = (op != null) ? txtRuta.getText().trim() : "";
             int tamArch = (op == TipoOperacionES.CREAR) ? Integer.parseInt(txtTamArchivo.getText().trim()) : 0;
+            if (op == TipoOperacionES.CREAR && tamArch < 0) {
+                throw new IllegalArgumentException("El tamaño en bloques del archivo debe ser >= 0.");
+            }
             if (op != null && ruta.isEmpty()) {
                 throw new IllegalArgumentException("Debe indicar la ruta objetivo para la operación E/S.");
             }

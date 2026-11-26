@@ -219,6 +219,10 @@ public class ConfigProcesosDisco {
             if (globalConfig.getSwapSizeBlocks() < 0) {
                 errores.agregar("'globalConfig.swapSizeBlocks' no puede ser negativo.");
             }
+            if (!esPoliticaDiscoValida(globalConfig.getInitialDiskPolicy())) {
+                errores.agregar("'globalConfig.initialDiskPolicy' inválida ('"
+                        + globalConfig.getInitialDiskPolicy() + "'). Use FIFO, SSTF, SCAN o C-SCAN.");
+            }
         }
 
         if (computer == null) {
@@ -226,6 +230,10 @@ public class ConfigProcesosDisco {
         } else {
             if (computer.getRamCapacity() <= 0) {
                 errores.agregar("'computer.ramCapacity' debe ser mayor que cero.");
+            }
+            if (!esPoliticaCpuValida(computer.getPolicy())) {
+                errores.agregar("'computer.policy' inválida ('"
+                        + computer.getPolicy() + "'). Use FCFS, ROUND_ROBIN, EDF o PRIORIDAD.");
             }
             PoliticaPlanificacion polCpu = GestorPersistencia.parsearPolitica(computer.getPolicy());
             if (polCpu == PoliticaPlanificacion.ROUND_ROBIN && computer.getQuantum() <= 0) {
@@ -253,6 +261,9 @@ public class ConfigProcesosDisco {
             }
             if (p.getMemory() <= 0) {
                 errores.agregar("El proceso '" + nom + "' debe tener 'memory' > 0.");
+            } else if (computer != null && computer.getRamCapacity() > 0 && p.getMemory() > computer.getRamCapacity()) {
+                errores.agregar("El proceso '" + nom + "' requiere " + p.getMemory()
+                        + " bloques de RAM, superando 'computer.ramCapacity' (" + computer.getRamCapacity() + ").");
             }
             if (p.getDeadline() <= 0) {
                 errores.agregar("El proceso '" + nom + "' debe tener 'deadline' > 0.");
@@ -291,6 +302,26 @@ public class ConfigProcesosDisco {
             }
             throw new IllegalArgumentException(sb.toString().trim());
         }
+    }
+
+    private static boolean esPoliticaDiscoValida(String texto) {
+        if (texto == null || texto.trim().isEmpty()) {
+            return false;
+        }
+        String t = texto.trim().toUpperCase();
+        return t.equals("FIFO") || t.equals("SSTF") || t.equals("SCAN")
+                || t.equals("C-SCAN") || t.equals("C_SCAN") || t.equals("CSCAN");
+    }
+
+    private static boolean esPoliticaCpuValida(String texto) {
+        if (texto == null || texto.trim().isEmpty()) {
+            return false;
+        }
+        String t = texto.trim().toUpperCase();
+        return t.equals("FCFS") || t.contains("FIRST COME")
+                || t.equals("ROUND_ROBIN") || t.equals("ROUND ROBIN") || t.equals("RR")
+                || t.equals("EDF") || t.contains("DEADLINE")
+                || t.equals("PRIORIDAD") || t.equals("PRIORIDADES") || t.equals("PRIORITY");
     }
 
     /** Convierte un {@link ProcesoJson} en una instancia de {@link PCB} lista para el computador único. */

@@ -406,6 +406,17 @@ public class SistemaArchivos implements ServicioArchivos {
     public void cargarEntradaPrecargada(String ruta, TipoNodoArchivo tipo,
                                         int startBlock, int blocks,
                                         String dueno, PermisoArchivo permiso) {
+        cargarEntradaPrecargada(ruta, tipo, startBlock, blocks, null, dueno, permiso);
+    }
+
+    /**
+     * Sobrecarga que admite una cadena explícita de bloques ({@code cadenaBloques}) para restaurar
+     * archivos fragmentados guardados en JSON.
+     */
+    public void cargarEntradaPrecargada(String ruta, TipoNodoArchivo tipo,
+                                        int startBlock, int blocks,
+                                        ListaEnlazada<Integer> cadenaBloques,
+                                        String dueno, PermisoArchivo permiso) {
         String rutaNorm = normalizarRuta(ruta);
         if ("/".equals(rutaNorm)) {
             return;
@@ -427,18 +438,22 @@ public class SistemaArchivos implements ServicioArchivos {
                         0, NodoArchivo.SIN_BLOQUE, dueno, permiso, "Precarga JSON", "");
                 padre.agregarHijo(dir);
             } else {
-                if (blocks <= 0) {
+                boolean tieneCadena = (cadenaBloques != null && !cadenaBloques.estaVacia());
+                int cantReal = tieneCadena ? cadenaBloques.getTamano() : blocks;
+                int inicioReal = tieneCadena ? cadenaBloques.obtener(0) : startBlock;
+                if (cantReal <= 0) {
                     throw new IllegalArgumentException("El archivo '" + rutaNorm + "' debe tener al menos 1 bloque.");
                 }
                 String color = siguienteColor();
-                boolean ocupado = disco.ocuparBloquesContiguosArchivo(rutaNorm, startBlock, blocks, color);
+                boolean ocupado = tieneCadena
+                        ? disco.ocuparCadenaBloquesArchivo(rutaNorm, cadenaBloques, color)
+                        : disco.ocuparBloquesContiguosArchivo(rutaNorm, inicioReal, cantReal, color);
                 if (!ocupado) {
                     throw new IllegalStateException(
-                            "No se pudieron asignar los bloques [" + startBlock + ".." + (startBlock + blocks - 1)
-                                    + "] para '" + rutaNorm + "' (fuera de rango u ocupados).");
+                            "No se pudieron asignar los bloques para '" + rutaNorm + "' (fuera de rango u ocupados).");
                 }
                 NodoArchivo arch = new NodoArchivo(nombre, rutaNorm, TipoNodoArchivo.ARCHIVO,
-                        blocks, startBlock, dueno, permiso, "Precarga JSON", color);
+                        cantReal, inicioReal, dueno, permiso, "Precarga JSON", color);
                 padre.agregarHijo(arch);
             }
         } finally {

@@ -22,7 +22,7 @@ import javax.swing.table.DefaultTableCellRenderer;
 public class ModeloTablaArchivos extends AbstractTableModel {
 
     private static final String[] COLUMNAS = {
-        "Color", "Archivo / Ruta", "Bloques", "Primer bloque", "Dueño", "Permisos"
+        "Color", "Archivo / Ruta", "Bloques", "Primer bloque", "Dueño", "Permisos", "Proceso creador"
     };
 
     private ListaEnlazada<NodoArchivo> filas = new ListaEnlazada<>();
@@ -94,6 +94,7 @@ public class ModeloTablaArchivos extends AbstractTableModel {
             case 3 -> n.getPrimerBloque();
             case 4 -> n.getDueno();
             case 5 -> n.getPermiso() != null ? n.getPermiso().getEtiqueta() : "-";
+            case 6 -> n.getProcesoCreador();
             default -> "";
         };
     }

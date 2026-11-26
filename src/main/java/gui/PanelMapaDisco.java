@@ -138,14 +138,20 @@ public class PanelMapaDisco extends JPanel {
                 g2.fillOval(x + celda - 10, y + 4, 6, 6);
             }
         }
-        if (destinoActual >= 0) {
+        if (destinoActual >= 0 && destinoActual < bloques.length) {
             g2.setColor(COLOR_DESTINO);
             g2.setStroke(new BasicStroke(3f));
-            for (int k = 0; k < Math.max(1, cantidadActual); k++) {
-                int n = destinoActual + k;
-                if (n < bloques.length) {
-                    g2.drawRect((n % COLUMNAS) * celda + 2, (n / COLUMNAS) * celda + 2, celda - 4, celda - 4);
+            int cursor = destinoActual;
+            int limite = Math.min(bloques.length, Math.max(1, cantidadActual));
+            int pasos = 0;
+            while (cursor != BloqueDisco.FIN_CADENA && cursor >= 0 && cursor < bloques.length && pasos < limite) {
+                g2.drawRect((cursor % COLUMNAS) * celda + 2, (cursor / COLUMNAS) * celda + 2, celda - 4, celda - 4);
+                int siguiente = bloques[cursor].getSiguienteBloque();
+                if (siguiente == cursor) {
+                    break;
                 }
+                cursor = siguiente;
+                pasos++;
             }
         }
         if (cabezal >= 0 && cabezal < bloques.length) {

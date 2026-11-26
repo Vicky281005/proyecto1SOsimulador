@@ -81,6 +81,7 @@ public class PCB {
     // Proyecto 2: swap (proceso suspendido)
     private int primerBloqueSwap = SIN_ASIGNAR;
     private int bloquesSwap;
+    private boolean escrituraSwapPendiente;
 
     public PCB(String nombre, int computadorAsignado, TipoProceso tipo, int prioridad, 
                long memoriaAsignada, long deadlineRelativo, 
@@ -303,6 +304,11 @@ public class PCB {
     public void liberarSwap() {
         this.primerBloqueSwap = SIN_ASIGNAR;
         this.bloquesSwap = 0;
+        this.escrituraSwapPendiente = false;
+    }
+    public boolean isEscrituraSwapPendiente() { return escrituraSwapPendiente; }
+    public void setEscrituraSwapPendiente(boolean escrituraSwapPendiente) {
+        this.escrituraSwapPendiente = escrituraSwapPendiente;
     }
     public boolean esProcesoES() { return operacion != null; }
 

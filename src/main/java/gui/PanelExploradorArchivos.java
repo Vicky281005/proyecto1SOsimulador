@@ -19,7 +19,6 @@ import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.GridLayout;
 import java.awt.Insets;
-import java.util.Enumeration;
 import javax.swing.BorderFactory;
 import javax.swing.ButtonGroup;
 import javax.swing.Icon;
@@ -166,8 +165,9 @@ public class PanelExploradorArchivos extends JPanel {
         tablaArchivos.getColumnModel().getColumn(1).setPreferredWidth(190);
         tablaArchivos.getColumnModel().getColumn(2).setPreferredWidth(68);
         tablaArchivos.getColumnModel().getColumn(3).setPreferredWidth(92);
-        tablaArchivos.getColumnModel().getColumn(4).setPreferredWidth(75);
-        tablaArchivos.getColumnModel().getColumn(5).setPreferredWidth(78);
+        tablaArchivos.getColumnModel().getColumn(4).setPreferredWidth(70);
+        tablaArchivos.getColumnModel().getColumn(5).setPreferredWidth(72);
+        tablaArchivos.getColumnModel().getColumn(6).setPreferredWidth(115);
 
         JScrollPane scrollTabla = new JScrollPane(tablaArchivos);
         scrollTabla.setBorder(BorderFactory.createTitledBorder("Tabla de asignación de archivos en tiempo real"));
@@ -412,20 +412,22 @@ public class PanelExploradorArchivos extends JPanel {
     private ListaEnlazada<String> recolectarRutasExpandidas() {
         ListaEnlazada<String> rutas = new ListaEnlazada<>();
         Object rootObj = modeloArbol.getRoot();
-        if (!(rootObj instanceof DefaultMutableTreeNode root)) {
-            return rutas;
-        }
-        Enumeration<?> en = arbolArchivos.getExpandedDescendants(new TreePath(root.getPath()));
-        if (en != null) {
-            while (en.hasMoreElements()) {
-                Object next = en.nextElement();
-                if (next instanceof TreePath tp && tp.getLastPathComponent() instanceof DefaultMutableTreeNode dm
-                        && dm.getUserObject() instanceof NodoArchivo na) {
-                    rutas.agregar(na.getRuta());
-                }
-            }
+        if (rootObj instanceof DefaultMutableTreeNode root) {
+            recolectarExpandidasRecursivo(root, rutas);
         }
         return rutas;
+    }
+
+    private void recolectarExpandidasRecursivo(DefaultMutableTreeNode nodo, ListaEnlazada<String> rutas) {
+        TreePath path = new TreePath(nodo.getPath());
+        if (arbolArchivos.isExpanded(path) && nodo.getUserObject() instanceof NodoArchivo na) {
+            rutas.agregar(na.getRuta());
+        }
+        for (int i = 0; i < nodo.getChildCount(); i++) {
+            if (nodo.getChildAt(i) instanceof DefaultMutableTreeNode hijo) {
+                recolectarExpandidasRecursivo(hijo, rutas);
+            }
+        }
     }
 
     private void expandirPorDefectoYGuardadas(DefaultMutableTreeNode root, ListaEnlazada<String> guardadas) {
@@ -931,6 +933,11 @@ public class PanelExploradorArchivos extends JPanel {
     private void mostrarErrorValidacion(String mensaje) {
         mensajeUltimaAccion = "Rechazado: " + mensaje;
         lblEstadoBarra.setText(mensajeUltimaAccion);
+        if (simulador != null && simulador.getLogEventos() != null) {
+            simulador.getLogEventos().registrar(
+                    simulacion.LogEventos.TipoEvento.RECHAZO_ES,
+                    "GUI [" + getModoSeleccionado().getEtiqueta() + "/" + getUsuarioActivo() + "]: " + mensaje);
+        }
         JOptionPane.showMessageDialog(this, mensaje, "Validación de archivos y permisos", JOptionPane.WARNING_MESSAGE);
     }
 

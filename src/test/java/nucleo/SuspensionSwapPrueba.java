@@ -146,11 +146,97 @@ public class SuspensionSwapPrueba {
         cerrar();
     }
 
+    private static void escenarioSinSuspensionParcial() {
+        if (verbose) System.out.println("-- Sin suspensión parcial cuando el swap no alcanza para todas las víctimas");
+        armar(12, 10); // Dos bloqueados de 6 cada uno -> hacen falta 12 bloques de swap para N(10), pero solo hay 10
+        PCB b1 = crear("B1", 5, 6, 100000, conEspera(15));
+        PCB b2 = crear("B2", 4, 6, 100000, conEspera(15));
+        for (int c = 0; c < 6 && (b1.getEstado() != EstadoProceso.BLOQUEADO || b2.getEstado() != EstadoProceso.BLOQUEADO); c++) ciclo();
+        PCB n = crear("N", 1, 10, 100000, soloCpu(2));
+        ciclo();
+        asegurar(pc.getTotalSuspensiones() == 0 && pc.getCantidadBloqueadosSuspendidos() == 0,
+                "no suspende parcialmente ninguna víctima si el swap no cubre la suma total requerida");
+        for (int c = 0; c < 300 && n.getEstado() != EstadoProceso.TERMINADO; c++) ciclo();
+        asegurar(n.getEstado() == EstadoProceso.TERMINADO && pc.getMemoriaDisponible() == 12,
+                "N logra ejecutarse cuando B1 y B2 terminan normalmente");
+        cerrar();
+    }
+
+    private static void escenarioOrdenSuspenderAntesDeReactivar() {
+        if (verbose) System.out.println("-- REACTIVAR espera a que termine la escritura SUSPENDER en disco");
+        armar(10, 20);
+        PCB a = crear("A", 5, 6, 100000, conEspera(2));
+        PCB n = crear("N", 1, 8, 100000, soloCpu(1));
+        boolean vioPendienteEnListoSusp = false;
+        boolean violoOrden = false;
+        boolean suspendCompletado = false;
+        for (int c = 0; c < 400 && (a.getEstado() != EstadoProceso.TERMINADO || n.getEstado() != EstadoProceso.TERMINADO); c++) {
+            ciclo();
+            if (a.getEstado() == EstadoProceso.LISTO_SUSPENDIDO && a.isEscrituraSwapPendiente()) {
+                vioPendienteEnListoSusp = true;
+            }
+            // Revisar log: no puede aparecer 'se lee A desde el swap' antes de 'A ya está escrito en el swap'
+            var it = sim.getLogEventos().getUltimos(500).iterador();
+            boolean vioEscrito = false;
+            while (it.haySiguiente()) {
+                String msg = it.siguiente().getMensaje();
+                if (msg.contains("Suspensión completada: A")) {
+                    vioEscrito = true;
+                    suspendCompletado = true;
+                }
+                if (msg.contains("Reactivación: se lee A") && !vioEscrito) {
+                    violoOrden = true;
+                }
+            }
+        }
+        asegurar(!violoOrden && suspendCompletado, "nunca se encola REACTIVAR antes de completarse SUSPENDER");
+        asegurar(a.getEstado() == EstadoProceso.TERMINADO && n.getEstado() == EstadoProceso.TERMINADO,
+                "ambos procesos terminan correctamente" + (vioPendienteEnListoSusp ? " (esperó escritura swap)" : ""));
+        cerrar();
+    }
+
+    private static void escenarioDeadlineESNoMutaSistemaArchivos() {
+        if (verbose) System.out.println("-- Proceso E/S muerto por deadline no crea el archivo y libera bloques");
+        sim = new Simulador();
+        pc = new Computador(1, "PC-1", 64, new FCFS());
+        sim.registrarComputador(pc);
+        disco = new DiscoSimulado("Disco", 100, 0, 20);
+        disco.setVelocidadCabezal(1);
+        sim.setDisco(disco);
+        archivos.SistemaArchivos sa = new archivos.SistemaArchivos(disco);
+        sim.setServicioArchivos(sa);
+        // Ocupamos los bloques 0..49 para que /tardio.bin quede en bloque 50 (lejos del cabezal 0)
+        sa.cargarEntradaPrecargada("/ocupado.bin", enums.TipoNodoArchivo.ARCHIVO, 0, 50, "admin", enums.PermisoArchivo.PUBLICO);
+
+        ListaEnlazada<Instruccion> prog = new ListaEnlazada<>();
+        prog.agregar(new Instruccion(TipoInstruccion.OPERACION_ES, "CREATE"));
+        prog.agregar(new Instruccion(TipoInstruccion.CPU));
+        PCB p = new PCB("TardioCreate", 1, TipoProceso.IO_BOUND, 1, 8, 5, "", 0, 0, prog, 0);
+        p.setOperacion(enums.TipoOperacionES.CREAR);
+        p.setRutaObjetivo("/tardio.bin");
+        p.setTamanoArchivoBloques(5);
+        p.setModoSolicitante(enums.ModoUsuario.ADMINISTRADOR);
+        p.setUsuario("admin");
+        sim.cargarProceso(p);
+
+        for (int c = 0; c < 150; c++) ciclo();
+        asegurar(p.getEstado() == EstadoProceso.TERMINADO && !p.isDeadlineCumplido(),
+                "el proceso CREATE venció su deadline en cola de disco");
+        asegurar(sa.buscarPorRuta("/tardio.bin") == null,
+                "el archivo /tardio.bin NO se creó tras morir el proceso por deadline");
+        asegurar(disco.getBloquesLibresDatos() == 50,
+                "los 5 bloques reservados se liberaron limpiamente (libres=" + disco.getBloquesLibresDatos() + ")");
+        cerrar();
+    }
+
     public static void main(String[] args) {
         escenarioCompleto();
         escenarioSinSwap();
         escenarioVictima();
         escenarioDeadlineSuspendido();
+        escenarioSinSuspensionParcial();
+        escenarioOrdenSuspenderAntesDeReactivar();
+        escenarioDeadlineESNoMutaSistemaArchivos();
         int rep = args.length > 0 ? Integer.parseInt(args[0]) : 30;
         verbose = false;
         int antes = fallos;

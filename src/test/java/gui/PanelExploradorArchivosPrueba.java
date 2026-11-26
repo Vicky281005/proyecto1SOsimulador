@@ -82,6 +82,10 @@ public class PanelExploradorArchivosPrueba {
             JTree arbol = panel.getArbolArchivos();
 
             verificar(tabla.getRowCount() == 9, "Tabla muestra exactamente los 9 archivos cargados del JSON");
+            verificar(tabla.getColumnCount() == 7 && "Proceso creador".equals(tabla.getColumnName(6)),
+                    "Tabla incluye la columna requerida 'Proceso creador'");
+            verificar("Precarga JSON".equals(tabla.getValueAt(0, 6)),
+                    "Columna 'Proceso creador' muestra el creador real del archivo");
             verificar(tabla.getValueAt(0, 0) instanceof Color, "Columna Color entrega el Color real del bloque en disco");
             DefaultMutableTreeNode raizSwing = (DefaultMutableTreeNode) arbol.getModel().getRoot();
             verificar(raizSwing.getChildCount() >= 3, "JTree muestra las entradas raíz (/mbr.bin, /sistema, /usuarios)");

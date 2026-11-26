@@ -126,51 +126,30 @@ public class DiscoSimulado implements ComponenteReloj {
     }
 
     private void configurarAreaSwapInternal(int nuevoTamanoSwap) {
-        // Limpiar marca previa si existía un área Swap vacía
-        for (int i = 0; i < bloques.length; i++) {
-            if (bloques[i].isAreaSwap() && bloques[i].isLibre()) {
-                bloques[i].setAreaSwap(false);
-            }
-        }
-        this.tamanoSwap = nuevoTamanoSwap;
-        if (nuevoTamanoSwap == 0) {
-            this.inicioAreaSwap = totalBloquesDatos;
-            return;
-        }
-
-        // Verificar si caben al final del arreglo actual sin pisar archivos existentes
-        boolean cabeAlFinalSinPisar = nuevoTamanoSwap < bloques.length;
-        if (cabeAlFinalSinPisar) {
-            int inicioTentativo = bloques.length - nuevoTamanoSwap;
-            for (int i = inicioTentativo; i < bloques.length; i++) {
-                if (bloques[i].isOcupado() && !bloques[i].isOcupadoPorSwap()) {
-                    cabeAlFinalSinPisar = false;
-                    break;
-                }
-            }
-            if (cabeAlFinalSinPisar) {
-                this.inicioAreaSwap = inicioTentativo;
-                this.totalBloquesDatos = inicioTentativo;
-                for (int i = inicioTentativo; i < bloques.length; i++) {
-                    bloques[i].setAreaSwap(true);
-                }
-                return;
-            }
-        }
-
-        // Expandir contiguamente después de los bloques de datos
         int nuevaLongitud = totalBloquesDatos + nuevoTamanoSwap;
         BloqueDisco[] nuevoArreglo = new BloqueDisco[nuevaLongitud];
         for (int i = 0; i < totalBloquesDatos; i++) {
-            nuevoArreglo[i] = bloques[i];
-        }
-        for (int i = totalBloquesDatos; i < nuevaLongitud; i++) {
-            BloqueDisco b = new BloqueDisco(i);
-            b.setAreaSwap(true);
+            BloqueDisco b = bloques[i];
+            if (b.isAreaSwap() && b.isLibre()) {
+                b.setAreaSwap(false);
+            }
             nuevoArreglo[i] = b;
         }
+        for (int i = totalBloquesDatos; i < nuevaLongitud; i++) {
+            if (i < bloques.length && bloques[i] != null && bloques[i].isAreaSwap() && bloques[i].isOcupadoPorSwap()) {
+                nuevoArreglo[i] = bloques[i];
+            } else {
+                BloqueDisco b = new BloqueDisco(i);
+                b.setAreaSwap(true);
+                nuevoArreglo[i] = b;
+            }
+        }
         this.bloques = nuevoArreglo;
+        this.tamanoSwap = nuevoTamanoSwap;
         this.inicioAreaSwap = totalBloquesDatos;
+        if (this.posicionCabezal >= this.bloques.length) {
+            this.posicionCabezal = Math.max(0, this.totalBloquesDatos - 1);
+        }
     }
 
     public void setEscuchaFinES(EscuchaFinES escuchaFinES) {
@@ -340,6 +319,41 @@ public class DiscoSimulado implements ComponenteReloj {
     }
 
     /**
+     * Marca una cadena arbitraria (posiblemente fragmentada) de bloques como ocupada por un archivo
+     * precargado desde JSON, preservando sus enlaces reales.
+     *
+     * @return {@code true} si todos los bloques están dentro de rango, son únicos y están libres.
+     */
+    public boolean ocuparCadenaBloquesArchivo(String rutaArchivo, ListaEnlazada<Integer> cadena, String colorHex) {
+        if (cadena == null || cadena.estaVacia()) {
+            return false;
+        }
+        mutex.acquireUninterruptibly();
+        try {
+            boolean[] vistos = new boolean[totalBloquesDatos];
+            int n = cadena.getTamano();
+            for (int i = 0; i < n; i++) {
+                Integer idx = cadena.obtener(i);
+                if (idx == null || idx < 0 || idx >= totalBloquesDatos) {
+                    return false;
+                }
+                if (vistos[idx] || bloques[idx].isOcupado() || bloques[idx].isAreaSwap()) {
+                    return false;
+                }
+                vistos[idx] = true;
+            }
+            for (int i = 0; i < n; i++) {
+                int actual = cadena.obtener(i);
+                int siguiente = (i + 1 < n) ? cadena.obtener(i + 1) : BloqueDisco.FIN_CADENA;
+                bloques[actual].ocuparParaArchivo(rutaArchivo, siguiente, colorHex);
+            }
+            return true;
+        } finally {
+            mutex.release();
+        }
+    }
+
+    /**
      * Recorre la cadena encadenada desde {@code primerBloque} y libera todos sus bloques.
      *
      * @param primerBloque primer bloque de la lista encadenada del archivo.
@@ -493,10 +507,25 @@ public class DiscoSimulado implements ComponenteReloj {
                 int cabezalAntes = posicionCabezal;
                 seleccionarSiguienteLocked(cicloActual);
                 if (solicitudActual != null) {
+                    int destino = solicitudActual.getBloqueDestino();
+                    int distanciaLog;
+                    if (metaExtremoPendiente != -1) {
+                        if (politicaActual == PoliticaDisco.C_SCAN) {
+                            int limiteSuperior = calcularLimiteSuperiorSCAN();
+                            int extremoOpuesto = (metaExtremoPendiente == limiteSuperior) ? 0 : limiteSuperior;
+                            distanciaLog = Math.abs(metaExtremoPendiente - cabezalAntes)
+                                    + Math.abs(destino - extremoOpuesto);
+                        } else {
+                            distanciaLog = Math.abs(metaExtremoPendiente - cabezalAntes)
+                                    + Math.abs(metaExtremoPendiente - destino);
+                        }
+                    } else {
+                        distanciaLog = Math.abs(destino - cabezalAntes);
+                    }
                     eleccion = "Disco (" + politicaActual.getCodigoJson() + ") elige " + solicitudActual
                             + " con el cabezal en el bloque " + cabezalAntes
                             + (direccionAscendente ? " (ascendente)" : " (descendente)")
-                            + ", distancia " + Math.abs(solicitudActual.getBloqueDestino() - cabezalAntes)
+                            + ", distancia " + distanciaLog
                             + ", " + (pendientesAntes - 1) + " solicitudes quedan en espera";
                     logEleccion = this.logEventos;
                 }

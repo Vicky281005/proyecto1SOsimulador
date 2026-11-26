@@ -312,17 +312,21 @@ public class Simulador implements EscuchaFinES {
     public PCB solicitarOperacionES(int idComputador, String nombreProceso, TipoOperacionES operacion,
                                     String ruta, String nuevoNombre, int tamanoBloques,
                                     ModoUsuario modo, String usuario, PermisoArchivo permisoSolicitado) {
+        PCB creado;
         mutexEstado.acquireUninterruptibly();
         try {
             Computador destino = buscarComputador(idComputador);
             if (destino == null) {
                 throw new IllegalArgumentException("No existe un computador con id " + idComputador + ".");
             }
-            return destino.crearProcesoES(nombreProceso, operacion, ruta, nuevoNombre,
+            creado = destino.crearProcesoES(nombreProceso, operacion, ruta, nuevoNombre,
                     tamanoBloques, modo, usuario, permisoSolicitado, reloj.getCicloActual());
+            notificadoFinOcioso = false;
         } finally {
             mutexEstado.release();
         }
+        trabajoNuevo.release();
+        return creado;
     }
 
     /** Llamado desde el hilo del disco: reenvía el aviso al computador del proceso. */
@@ -437,7 +441,7 @@ public class Simulador implements EscuchaFinES {
                     notificadoFinOcioso = true;
                     if (logEventos != null) {
                         logEventos.registrar(LogEventos.TipoEvento.OTRO,
-                                "Sin procesos activos en el clúster (Nuevos: 0, Listos: 0, Bloqueados: 0). CPU ociosa a la espera de nuevos procesos (ciclo "
+                                "Sin procesos activos en el computador (Nuevos: 0, Listos: 0, Bloqueados: 0). CPU ociosa a la espera de nuevos procesos (ciclo "
                                         + reloj.getCicloActual() + ").");
                     }
                 }

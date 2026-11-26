@@ -163,6 +163,67 @@ public class PersistenciaPrueba {
                 "Archivo /nuevo.bin creado sobre el disco preservado");
         asegurar(sim2.getDisco().getBloquesLibresDatos() == 1,
                 "Queda 1 bloque libre tras usar 3 de los 4 bloques liberados previamente");
+
+        // Regresión Bugs 1 y 2: archivo fragmentado + cabezal en zona Swap -> guardar y recargar sin error
+        String json2Del = """
+                {
+                  "globalConfig": { "cycleDurationMs": 50, "swapSizeBlocks": 100, "initialDiskPolicy": "FIFO" },
+                  "computer": { "ramCapacity": 1024, "policy": "FCFS", "quantum": 0 },
+                  "processes": [
+                    { "name": "DelMbr", "memory": 16, "deadline": 500, "instructions": 2, "targetPath": "/mbr.bin", "operation": "DELETE" },
+                    { "name": "DelScript", "memory": 16, "deadline": 500, "instructions": 2, "targetPath": "/sistema/script.py", "operation": "DELETE" }
+                  ]
+                }
+                """;
+        Simulador simDel = GestorPersistencia.construirSimuladorPreservandoDisco(
+                saModificado, GestorPersistencia.cargarProcesosDesdeTexto(json2Del));
+        simDel.ejecutar();
+
+        String json2Frag = """
+                {
+                  "globalConfig": { "cycleDurationMs": 50, "swapSizeBlocks": 100, "initialDiskPolicy": "FIFO" },
+                  "computer": { "ramCapacity": 1024, "policy": "FCFS", "quantum": 0 },
+                  "processes": [
+                    { "name": "CrearFrag", "memory": 16, "deadline": 500, "instructions": 2, "targetPath": "/frag.bin", "operation": "CREATE", "fileSizeBlocks": 13 }
+                  ]
+                }
+                """;
+        Simulador sim3 = GestorPersistencia.construirSimuladorPreservandoDisco(
+                saModificado, GestorPersistencia.cargarProcesosDesdeTexto(json2Frag));
+        sim3.ejecutar();
+        ListaEnlazada<Integer> cadenaOriginal = sim3.getDisco().obtenerCadenaBloques(
+                saModificado.buscarPorRuta("/frag.bin").getPrimerBloque());
+        // Mover cabezal a zona Swap (bloque >= totalBloquesDatos) antes de exportar
+        sim3.getDisco().asignarBloquesSwap("SwapTest", 4);
+        ListaEnlazada<modelo.Instruccion> progSwap = new ListaEnlazada<>();
+        progSwap.agregar(new modelo.Instruccion(enums.TipoInstruccion.CPU));
+        sim3.getDisco().encolarSolicitud(new disco.SolicitudES(
+                new modelo.PCB("SwapMove", 1, TipoProceso.IO_BOUND, 1, 4, 500, "", 0, 0, progSwap, 0),
+                TipoOperacionES.SUSPENDER, "", "", 200, 1, 0, true));
+        for (int c = 1; c <= 40; c++) {
+            sim3.getDisco().tick(c);
+        }
+        asegurar(sim3.getDisco().getPosicionCabezal() >= sim3.getDisco().getTotalBloquesDatos(),
+                "Cabezal situado en área Swap antes de exportar (" + sim3.getDisco().getPosicionCabezal() + ")");
+
+        File tmpFrag = File.createTempFile("avilaos_frag_", ".json");
+        tmpFrag.deleteOnExit();
+        GestorPersistencia.guardarSistemaArchivosJSON(saModificado, tmpFrag);
+        ConfigSistemaArchivos recargadoFrag = GestorPersistencia.cargarSistemaArchivosJSON(tmpFrag);
+        asegurar(recargadoFrag.getDiskConfig().getInitialHead() < recargadoFrag.getDiskConfig().getTotalBlocks(),
+                "initialHead exportado queda acotado al rango de bloques de datos");
+
+        Simulador simRecargado = GestorPersistencia.construirSimuladorDesdeDosJSON(recargadoFrag, procCfg2);
+        SistemaArchivos saRecargado = (SistemaArchivos) simRecargado.getServicioArchivos();
+        ListaEnlazada<Integer> cadenaRecargada = simRecargado.getDisco().obtenerCadenaBloques(
+                saRecargado.buscarPorRuta("/frag.bin").getPrimerBloque());
+        boolean mismaCadena = cadenaOriginal.getTamano() == 13 && cadenaRecargada.getTamano() == 13;
+        for (int i = 0; mismaCadena && i < 13; i++) {
+            if (!cadenaOriginal.obtener(i).equals(cadenaRecargada.obtener(i))) {
+                mismaCadena = false;
+            }
+        }
+        asegurar(mismaCadena, "Archivo fragmentado se guarda con blockChain y se recarga conservando la misma cadena");
     }
 
     public static void probarValidacionesEstrictas() {
@@ -214,6 +275,36 @@ public class PersistenciaPrueba {
             falloJson1EnSlot2 = true;
         }
         asegurar(falloJson1EnSlot2, "Rechaza cargar JSON 1 (Sistema de Archivos) en el selector de JSON 2 (Procesos)");
+
+        boolean falloMemExcedeRam = false;
+        try {
+            GestorPersistencia.cargarProcesosDesdeTexto("""
+                    {
+                      "globalConfig": { "cycleDurationMs": 300, "swapSizeBlocks": 50, "initialDiskPolicy": "FIFO" },
+                      "computer": { "ramCapacity": 32, "policy": "FCFS", "quantum": 0 },
+                      "processes": [
+                        { "name": "Enorme", "memory": 64, "deadline": 100, "instructions": 2 }
+                      ]
+                    }
+                    """);
+        } catch (Exception ex) {
+            falloMemExcedeRam = true;
+        }
+        asegurar(falloMemExcedeRam, "Rechaza proceso en JSON 2 con memory > computer.ramCapacity");
+
+        boolean falloPolDesconocida = false;
+        try {
+            GestorPersistencia.cargarProcesosDesdeTexto("""
+                    {
+                      "globalConfig": { "cycleDurationMs": 300, "swapSizeBlocks": 50, "initialDiskPolicy": "INVENTADA" },
+                      "computer": { "ramCapacity": 512, "policy": "FCFS", "quantum": 0 },
+                      "processes": []
+                    }
+                    """);
+        } catch (Exception ex) {
+            falloPolDesconocida = true;
+        }
+        asegurar(falloPolDesconocida, "Rechaza initialDiskPolicy desconocida en JSON 2");
     }
 
     public static void probarConfigGeneralJsonYCSV() throws Exception {
