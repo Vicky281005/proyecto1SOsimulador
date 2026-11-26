@@ -125,53 +125,129 @@ public class PanelComputador extends JPanel {
         return scroll;
     }
 
+    /** Snapshot inmutable del estado del computador capturado dentro de {@code leerEstado}. */
+    static final class Snapshot {
+        final boolean cpuOciosa;
+        final enums.ModoCPU modoCpu;
+        final String textoProceso;
+        final String textoRegistros;
+        final String textoDeadline;
+        final long ramTotal;
+        final long ramUsada;
+        final String[] nuevos;
+        final String[] listos;
+        final String[] bloqueados;
+        final String[] listosSuspendidos;
+        final String[] bloqueadosSuspendidos;
+        final String[] terminados;
+        final boolean esRoundRobin;
+        final int quantumRoundRobin;
+
+        Snapshot(boolean cpuOciosa, enums.ModoCPU modoCpu,
+                 String textoProceso, String textoRegistros, String textoDeadline,
+                 long ramTotal, long ramUsada,
+                 String[] nuevos, String[] listos, String[] bloqueados,
+                 String[] listosSuspendidos, String[] bloqueadosSuspendidos, String[] terminados,
+                 boolean esRoundRobin, int quantumRoundRobin) {
+            this.cpuOciosa = cpuOciosa;
+            this.modoCpu = modoCpu;
+            this.textoProceso = textoProceso;
+            this.textoRegistros = textoRegistros;
+            this.textoDeadline = textoDeadline;
+            this.ramTotal = ramTotal;
+            this.ramUsada = ramUsada;
+            this.nuevos = nuevos;
+            this.listos = listos;
+            this.bloqueados = bloqueados;
+            this.listosSuspendidos = listosSuspendidos;
+            this.bloqueadosSuspendidos = bloqueadosSuspendidos;
+            this.terminados = terminados;
+            this.esRoundRobin = esRoundRobin;
+            this.quantumRoundRobin = quantumRoundRobin;
+        }
+    }
+
     /**
-     * Refresca todo lo que muestra el panel con el estado actual del computador.
-     * Debe ejecutarse en el hilo de Swing y dentro de {@code leerEstado}.
+     * Captura un snapshot de solo lectura del computador (sin tocar componentes Swing).
+     * Debe llamarse dentro de {@link Simulador#leerEstado(Runnable)}.
      */
-    public void actualizar() {
+    Snapshot capturarSnapshot() {
         CPU cpu = computador.getCpu();
         PCB actual = cpu.getProcesoActual();
+        boolean ociosa = (actual == null);
+        enums.ModoCPU modo = cpu.getModo();
 
-        lblModo.setText("CPU: " + (actual == null ? "ociosa" : "ocupada")
-                + "   |   Modo: " + cpu.getModo());
-        lblModo.setForeground(actual == null ? COLOR_OCIOSA
-                : (cpu.getModo() == enums.ModoCPU.KERNEL ? COLOR_SO : COLOR_USUARIO));
-
-        if (actual == null) {
-            lblProceso.setText("Proceso en CPU: —");
-            lblRegistros.setText("PC: —   MAR: —   Prioridad: —");
-            lblDeadline.setText("Deadline: —   Restante: —");
-        } else {
-            lblProceso.setText("Proceso en CPU: " + actual.getNombre() + " (id " + actual.getId() + ")");
-            lblRegistros.setText("PC: " + actual.getPc() + "   MAR: " + actual.getMar()
-                    + "   Prioridad: " + actual.getPrioridad());
-            lblDeadline.setText("Deadline (ciclo): " + actual.getDeadlineAbsoluto()
-                    + "   Restante: " + actual.getTiempoRestante());
-        }
+        String txtProceso = ociosa
+                ? "Proceso en CPU: —"
+                : "Proceso en CPU: " + actual.getNombre() + " (id " + actual.getId() + ")";
+        String txtRegistros = ociosa
+                ? "PC: —   MAR: —   Prioridad: —"
+                : "PC: " + actual.getPc() + "   MAR: " + actual.getMar()
+                        + "   Prioridad: " + actual.getPrioridad();
+        String txtDeadline = ociosa
+                ? "Deadline: —   Restante: —"
+                : "Deadline (ciclo): " + actual.getDeadlineAbsoluto()
+                        + "   Restante: " + actual.getTiempoRestante();
 
         long total = computador.getMemoriaTotal();
         long usada = total - computador.getMemoriaDisponible();
-        barraRam.setValue((int) (usada * 100 / total));
-        barraRam.setString("RAM: " + usada + " / " + total + " bloques");
 
-        nuevos.mostrar(lineas(computador.iteradorNuevos(), false, false));
-        listos.mostrar(lineas(computador.getPlanificador().iteradorListos(), false, false));
-        bloqueados.mostrar(lineas(computador.iteradorBloqueados(), true, false));
-        listosSuspendidos.mostrar(lineas(computador.iteradorListosSuspendidos(), false, false));
-        bloqueadosSuspendidos.mostrar(lineas(computador.iteradorBloqueadosSuspendidos(), true, false));
-        terminados.mostrar(lineas(computador.iteradorTerminados(), false, true));
+        String[] lNuevos = lineas(computador.iteradorNuevos(), false, false);
+        String[] lListos = lineas(computador.getPlanificador().iteradorListos(), false, false);
+        String[] lBloqueados = lineas(computador.iteradorBloqueados(), true, false);
+        String[] lListosSusp = lineas(computador.iteradorListosSuspendidos(), false, false);
+        String[] lBloqSusp = lineas(computador.iteradorBloqueadosSuspendidos(), true, false);
+        String[] lTerminados = lineas(computador.iteradorTerminados(), false, true);
 
-        // Sincronizar estado del control de Quantum
-        if (computador.getPlanificador().getPolitica() instanceof planificacion.RoundRobin rr) {
-            int q = rr.getQuantum();
-            if (!ajustandoQuantum && ((Integer) spinnerQuantum.getValue()) != q) {
+        boolean esRR = computador.getPlanificador().getPolitica() instanceof planificacion.RoundRobin;
+        int qRR = esRR ? ((planificacion.RoundRobin) computador.getPlanificador().getPolitica()).getQuantum() : 0;
+
+        return new Snapshot(ociosa, modo, txtProceso, txtRegistros, txtDeadline,
+                total, usada, lNuevos, lListos, lBloqueados, lListosSusp, lBloqSusp, lTerminados,
+                esRR, qRR);
+    }
+
+    /**
+     * Aplica un snapshot previamente capturado sobre los componentes Swing (fuera de {@code mutexEstado}).
+     */
+    void aplicarSnapshot(Snapshot snap) {
+        if (snap == null) {
+            return;
+        }
+        lblModo.setText("CPU: " + (snap.cpuOciosa ? "ociosa" : "ocupada")
+                + "   |   Modo: " + snap.modoCpu);
+        lblModo.setForeground(snap.cpuOciosa ? COLOR_OCIOSA
+                : (snap.modoCpu == enums.ModoCPU.KERNEL ? COLOR_SO : COLOR_USUARIO));
+        lblProceso.setText(snap.textoProceso);
+        lblRegistros.setText(snap.textoRegistros);
+        lblDeadline.setText(snap.textoDeadline);
+
+        int pctRam = (snap.ramTotal > 0) ? (int) (snap.ramUsada * 100 / snap.ramTotal) : 0;
+        barraRam.setValue(pctRam);
+        barraRam.setString("RAM: " + snap.ramUsada + " / " + snap.ramTotal + " bloques");
+
+        nuevos.mostrar(snap.nuevos);
+        listos.mostrar(snap.listos);
+        bloqueados.mostrar(snap.bloqueados);
+        listosSuspendidos.mostrar(snap.listosSuspendidos);
+        bloqueadosSuspendidos.mostrar(snap.bloqueadosSuspendidos);
+        terminados.mostrar(snap.terminados);
+
+        if (snap.esRoundRobin && snap.quantumRoundRobin > 0) {
+            if (!ajustandoQuantum && ((Integer) spinnerQuantum.getValue()) != snap.quantumRoundRobin) {
                 ajustandoQuantum = true;
-                spinnerQuantum.setValue(q);
+                spinnerQuantum.setValue(snap.quantumRoundRobin);
                 ajustandoQuantum = false;
             }
         }
-        aplicarPermisosModo();
+        aplicarPermisosModo(snap.esRoundRobin);
+    }
+
+    /**
+     * Refresca todo lo que muestra el panel con el estado actual del computador.
+     */
+    public void actualizar() {
+        aplicarSnapshot(capturarSnapshot());
     }
 
     /** Habilita o restringe el cambio de política/quantum según el modo Administrador o Usuario. */
@@ -181,8 +257,12 @@ public class PanelComputador extends JPanel {
     }
 
     private void aplicarPermisosModo() {
-        boolean esAdmin = modoUsuario.esAdministrador();
         boolean esRR = computador.getPlanificador().getPolitica() instanceof planificacion.RoundRobin;
+        aplicarPermisosModo(esRR);
+    }
+
+    private void aplicarPermisosModo(boolean esRR) {
+        boolean esAdmin = modoUsuario.esAdministrador();
         comboPolitica.setEnabled(esAdmin);
         comboPolitica.setToolTipText(esAdmin
                 ? "Cambiar política de planificación de CPU"

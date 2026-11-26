@@ -447,10 +447,11 @@ public class Computador implements ComponenteReloj {
         PCB p = sol.getProceso();
         simulacion.LogEventos log = (simulador != null) ? simulador.getLogEventos() : null;
         if (sol.getOperacion() == TipoOperacionES.SUSPENDER) {
-            if (p != null) {
-                p.setEscrituraSwapPendiente(false);
+            if (p == null || p.getEstado() == EstadoProceso.TERMINADO) {
+                return;
             }
-            if (log != null && p != null) {
+            p.setEscrituraSwapPendiente(false);
+            if (log != null) {
                 log.registrar(simulacion.LogEventos.TipoEvento.SUSPENSION,
                         "Suspensión completada: " + p.getNombre() + " ya está escrito en el swap");
             }

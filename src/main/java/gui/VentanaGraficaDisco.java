@@ -53,6 +53,10 @@ public class VentanaGraficaDisco extends JDialog {
     private final ChartPanel panelGrafico;
     private final JLabel lblResumen = new JLabel(" ", SwingConstants.CENTER);
     private final Timer temporizador;
+    private long ultimoCicloPintado = -1;
+    private int ultimoTamanoHistorial = -1;
+    private PoliticaDisco ultimaPoliticaPintada = null;
+    private long ultimoTotalAtendidasPintado = -1;
 
     /**
      * @param dueno     ventana que abre la gráfica.
@@ -134,6 +138,10 @@ public class VentanaGraficaDisco extends JDialog {
         double[] esperaPromRef = new double[1];
         PoliticaDisco[] todas = PoliticaDisco.values();
         long[] porPoliticaRef = new long[todas.length];
+        boolean[] sinCambios = new boolean[1];
+        long[] cicloCapturado = new long[1];
+        int[] tamHistCapturado = new int[1];
+        PoliticaDisco[] politicaCapturada = new PoliticaDisco[1];
 
         simulador.leerEstado(() -> {
             DiscoSimulado disco = simulador.getDisco();
@@ -141,9 +149,24 @@ public class VentanaGraficaDisco extends JDialog {
             if (disco == null) {
                 return;
             }
-            histDespRef[0] = disco.copiarHistorialDesplazamiento();
+            ListaEnlazada<Long> histDesp = disco.copiarHistorialDesplazamiento();
+            int tamHist = histDesp.getTamano();
+            long ciclo = simulador.getCicloActual();
+            PoliticaDisco polActual = disco.getPoliticaActual();
+            long atendidas = disco.getTotalSolicitudesAtendidas();
+
+            if (ciclo == ultimoCicloPintado && tamHist == ultimoTamanoHistorial
+                    && polActual == ultimaPoliticaPintada && atendidas == ultimoTotalAtendidasPintado) {
+                sinCambios[0] = true;
+                return;
+            }
+
+            cicloCapturado[0] = ciclo;
+            tamHistCapturado[0] = tamHist;
+            politicaCapturada[0] = polActual;
+            histDespRef[0] = histDesp;
             histPolRef[0] = disco.copiarHistorialPolitica();
-            atendidasRef[0] = disco.getTotalSolicitudesAtendidas();
+            atendidasRef[0] = atendidas;
             despTotalRef[0] = disco.getDesplazamientoTotal();
             subeRef[0] = disco.isDireccionAscendente();
             cabezalRef[0] = disco.getPosicionCabezal();
@@ -153,10 +176,17 @@ public class VentanaGraficaDisco extends JDialog {
             }
         });
 
+        if (sinCambios[0]) {
+            return;
+        }
         if (discoRef[0] == null) {
             lblResumen.setText("No hay disco configurado en este simulador.");
             return;
         }
+        ultimoCicloPintado = cicloCapturado[0];
+        ultimoTamanoHistorial = tamHistCapturado[0];
+        ultimaPoliticaPintada = politicaCapturada[0];
+        ultimoTotalAtendidasPintado = atendidasRef[0];
 
         double[][] ptsDesp = SerieDesplazamiento.muestrear(histDespRef[0], MAX_PUNTOS);
         ListaEnlazada<SerieDesplazamiento.CambioPolitica> cambios =

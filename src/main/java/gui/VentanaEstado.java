@@ -294,6 +294,8 @@ public class VentanaEstado extends JFrame {
         temporizador.stop();
         cerrarVentanasHijas();
         simulador.detener();
+        modelo.PCB.reiniciarGeneradorId();
+        disco.SolicitudES.reiniciarGeneradorId();
         dispose();
         SwingUtilities.invokeLater(() -> {
             Simulador nuevo = com.mycompany.proyecto1sosimulador.Proyecto1SOsimulador.crearSimuladorPendienteDeJson();
@@ -349,18 +351,27 @@ public class VentanaEstado extends JFrame {
         SwingUtilities.invokeLater(() -> new VentanaEstado(nuevoSimulador).setVisible(true));
     }
 
-    /** Lee el estado de forma segura y actualiza todos los paneles. */
+    /** Lee el estado de forma segura mediante snapshots y actualiza Swing fuera de {@code mutexEstado}. */
     private void refrescar() {
         final StringBuilder logSb = new StringBuilder();
         final long[] cicloActual = new long[1];
         final boolean[] hayTrabajo = new boolean[1];
+        final boolean[] faltaJson = new boolean[1];
+        final boolean[] limiteAlcanzado = new boolean[1];
+        final boolean[] pausada = new boolean[1];
+        final PanelComputador.Snapshot[] snapshotsPc = new PanelComputador.Snapshot[paneles.length];
+        final PanelExploradorArchivos.Snapshot[] snapshotArchivos = new PanelExploradorArchivos.Snapshot[1];
+
         simulador.leerEstado(() -> {
             cicloActual[0] = simulador.getCicloActual();
             hayTrabajo[0] = simulador.hayTrabajoPendiente();
-            for (PanelComputador panel : paneles) {
-                panel.actualizar();
+            faltaJson[0] = simulador.isRequiereCargaJsonObligatoria() && !simulador.tieneAmbosJsonCargados();
+            limiteAlcanzado[0] = simulador.isLimiteAlcanzado();
+            pausada[0] = simulador.estaPausada();
+            for (int i = 0; i < paneles.length; i++) {
+                snapshotsPc[i] = paneles[i].capturarSnapshot();
             }
-            panelArchivos.actualizar();
+            snapshotArchivos[0] = panelArchivos.capturarSnapshot();
             LogEventos log = simulador.getLogEventos();
             if (log != null) {
                 estructuras.ListaEnlazada<LogEventos.Evento> ultimos = log.getUltimos(200);
@@ -371,25 +382,29 @@ public class VentanaEstado extends JFrame {
             }
         });
 
-        SwingUtilities.invokeLater(() -> {
+        Runnable aplicarEnEdt = () -> {
+            for (int i = 0; i < paneles.length; i++) {
+                paneles[i].aplicarSnapshot(snapshotsPc[i]);
+            }
+            panelArchivos.setOperacionesHabilitadas(!detenida && !limiteAlcanzado[0] && !faltaJson[0]);
+            panelArchivos.aplicarSnapshot(snapshotArchivos[0]);
+
             lblCiclo.setText("Ciclo: " + cicloActual[0]);
             lblEstado.setText("Estado: " + textoEstado(hayTrabajo[0]));
-            boolean faltaJson = simulador.isRequiereCargaJsonObligatoria() && !simulador.tieneAmbosJsonCargados();
             boolean esAdmin = panelArchivos.getModoSeleccionado().esAdministrador();
-            btnIniciar.setEnabled(!iniciada && !detenida && !faltaJson);
-            btnPausa.setEnabled(iniciada && !detenida && !simulador.isLimiteAlcanzado());
-            btnPausa.setText(simulador.estaPausada() ? "Reanudar" : "Pausar");
+            btnIniciar.setEnabled(!iniciada && !detenida && !faltaJson[0]);
+            btnPausa.setEnabled(iniciada && !detenida && !limiteAlcanzado[0]);
+            btnPausa.setText(pausada[0] ? "Reanudar" : "Pausar");
             btnDetener.setEnabled(iniciada && !detenida);
             btnReiniciar.setEnabled(true);
-            btnCrear.setEnabled(!detenida && !simulador.isLimiteAlcanzado() && !faltaJson && esAdmin);
+            btnCrear.setEnabled(!detenida && !limiteAlcanzado[0] && !faltaJson[0] && esAdmin);
             btnCrear.setToolTipText(esAdmin
                     ? "Crear un nuevo proceso manual"
                     : "Gestionar procesos solo está permitido en Modo Administrador");
-            btnConfiguracion.setEnabled(esAdmin || faltaJson);
-            btnConfiguracion.setToolTipText((esAdmin || faltaJson)
+            btnConfiguracion.setEnabled(esAdmin || faltaJson[0]);
+            btnConfiguracion.setToolTipText((esAdmin || faltaJson[0])
                     ? "Configuración y carga de JSON"
                     : "Cambiar configuración y políticas solo está permitido en Modo Administrador");
-            panelArchivos.setOperacionesHabilitadas(!detenida && !simulador.isLimiteAlcanzado() && !faltaJson);
 
             if (logSb.length() > 0) {
                 String nuevoTexto = logSb.toString();
@@ -407,7 +422,13 @@ public class VentanaEstado extends JFrame {
                     }
                 }
             }
-        });
+        };
+
+        if (SwingUtilities.isEventDispatchThread()) {
+            aplicarEnEdt.run();
+        } else {
+            SwingUtilities.invokeLater(aplicarEnEdt);
+        }
     }
 
     /**

@@ -537,6 +537,131 @@ public class SistemaArchivos implements ServicioArchivos {
         return disco;
     }
 
+    /**
+     * Valida de solo lectura sintaxis, existencia, permisos ({@link ModoUsuario#ADMINISTRADOR}
+     * vs. {@link ModoUsuario#USUARIO}) y espacio libre en disco para una operación solicitada
+     * sobre el sistema de archivos, protegiendo las consultas con {@code mutex}.
+     *
+     * @param op                operación solicitada (CREAR, LEER, ACTUALIZAR o ELIMINAR).
+     * @param ruta              ruta objetivo de la operación.
+     * @param nuevoNombre       nuevo nombre (solo requerido para ACTUALIZAR).
+     * @param tamanoBloques     tamaño en bloques (solo requerido para CREAR archivo).
+     * @param modo              modo de usuario activo (Administrador o Usuario).
+     * @param usuario           identificador del usuario solicitante.
+     * @param esDirectorioCrear {@code true} si se solicita crear un directorio.
+     * @return mensaje descriptivo del error si no es válida, o {@code null} si procede.
+     */
+    public String validarOperacion(TipoOperacionES op, String ruta, String nuevoNombre,
+                                   int tamanoBloques, ModoUsuario modo, String usuario,
+                                   boolean esDirectorioCrear) {
+        if (op == null) {
+            return "Debe especificar una operación de archivo válida.";
+        }
+        if (usuario == null || usuario.trim().isEmpty()) {
+            return "Debe indicar un nombre de usuario activo válido.";
+        }
+        ModoUsuario modoEfectivo = (modo != null) ? modo : ModoUsuario.ADMINISTRADOR;
+        String usuarioLimpio = usuario.trim();
+        String rutaNorm;
+        try {
+            rutaNorm = normalizarRuta(ruta);
+        } catch (OperacionRechazadaException ex) {
+            return ex.getMessage();
+        }
+
+        mutex.acquireUninterruptibly();
+        try {
+            if (op == TipoOperacionES.CREAR) {
+                if ("/".equals(rutaNorm)) {
+                    return "No se puede crear la raíz '/'.";
+                }
+                if (buscarPorRutaLocked(rutaNorm) != null || existeCreacionPendienteLocked(rutaNorm)) {
+                    return "Ya existe una entrada en '" + rutaNorm + "'.";
+                }
+                String padreRuta = obtenerRutaPadre(rutaNorm);
+                NodoArchivo padre = buscarPorRutaLocked(padreRuta);
+                if (padre == null) {
+                    return "El directorio padre '" + padreRuta + "' no existe.";
+                }
+                if (!padre.esDirectorio()) {
+                    return "La ruta padre '" + padreRuta + "' es un archivo, no un directorio.";
+                }
+                if (!modoEfectivo.esAdministrador()) {
+                    if (esDirectorioCrear) {
+                        return "Permiso denegado: en modo Usuario solo el Administrador puede crear directorios.";
+                    }
+                    if (!padre.getDueno().equalsIgnoreCase(usuarioLimpio)) {
+                        return "Permiso denegado: el usuario '" + usuarioLimpio
+                                + "' solo puede crear archivos en directorios propios ('"
+                                + padre.getRuta() + "' pertenece a '" + padre.getDueno() + "').";
+                    }
+                }
+                if (!esDirectorioCrear) {
+                    if (tamanoBloques <= 0) {
+                        return "El archivo debe tener al menos 1 bloque.";
+                    }
+                    if (disco != null && tamanoBloques > disco.getBloquesLibresDatos()) {
+                        return "Espacio insuficiente en disco (" + tamanoBloques + " requeridos, "
+                                + disco.getBloquesLibresDatos() + " libres).";
+                    }
+                }
+                return null;
+            }
+
+            if ("/".equals(rutaNorm)) {
+                return "La operación " + op.getEtiqueta() + " no puede aplicarse sobre la raíz '/'.";
+            }
+            NodoArchivo nodo = buscarPorRutaLocked(rutaNorm);
+            if (nodo == null) {
+                return "La ruta '" + rutaNorm + "' no existe.";
+            }
+
+            if (op == TipoOperacionES.LEER) {
+                if (nodo.esDirectorio()) {
+                    return "No se puede leer un directorio como archivo ('" + rutaNorm + "').";
+                }
+                if (!modoEfectivo.esAdministrador() && !nodo.esPublico()
+                        && !nodo.getDueno().equalsIgnoreCase(usuarioLimpio)) {
+                    return "Acceso denegado: el archivo '" + rutaNorm + "' es privado y pertenece a '"
+                            + nodo.getDueno() + "'.";
+                }
+                return null;
+            }
+
+            if (op == TipoOperacionES.ACTUALIZAR || op == TipoOperacionES.ELIMINAR) {
+                if (!modoEfectivo.esAdministrador()) {
+                    if (nodo.esDirectorio()) {
+                        return "Permiso denegado: en modo Usuario solo el Administrador puede modificar o eliminar directorios.";
+                    }
+                    if (!nodo.getDueno().equalsIgnoreCase(usuarioLimpio)) {
+                        return "Permiso denegado: '" + usuarioLimpio + "' no puede "
+                                + (op == TipoOperacionES.ELIMINAR ? "eliminar" : "modificar")
+                                + " '" + rutaNorm + "' (dueño: '" + nodo.getDueno() + "').";
+                    }
+                }
+                if (op == TipoOperacionES.ACTUALIZAR) {
+                    if (nuevoNombre == null || nuevoNombre.trim().isEmpty()) {
+                        return "El nuevo nombre no puede estar vacío.";
+                    }
+                    if (nuevoNombre.contains("/")) {
+                        return "El nuevo nombre no debe contener '/'.";
+                    }
+                    String padreRuta = obtenerRutaPadre(rutaNorm);
+                    String rutaDestino = "/".equals(padreRuta)
+                            ? "/" + nuevoNombre.trim()
+                            : padreRuta + "/" + nuevoNombre.trim();
+                    if (!rutaDestino.equals(rutaNorm) && buscarPorRutaLocked(rutaDestino) != null) {
+                        return "Ya existe una entrada llamada '" + nuevoNombre.trim() + "' en esa carpeta.";
+                    }
+                }
+                return null;
+            }
+            return null;
+        } finally {
+            mutex.release();
+        }
+    }
+
     // =========================================================================
     // UTILIDADES INTERNAS DE ÁRBOL Y RUTAS
     // =========================================================================

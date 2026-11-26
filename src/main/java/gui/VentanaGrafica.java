@@ -65,6 +65,9 @@ public class VentanaGrafica extends JDialog {
             new String[]{VISTA_DETALLADA, VISTA_MODOS, VISTA_CLASICA});
     private final JLabel lblResumen = new JLabel(" ", SwingConstants.CENTER);
     private final Timer temporizador;
+    private long ultimoCicloPintado = -1;
+    private int ultimaCantidadSeries = -1;
+    private String ultimaVistaPintada = null;
 
     /**
      * @param dueno     ventana que abre la gráfica.
@@ -131,12 +134,24 @@ public class VentanaGrafica extends JDialog {
         String vista = (String) comboVista.getSelectedItem();
         XYSeriesCollection[] datos = new XYSeriesCollection[1];
         String[] resumen = new String[1];
+        boolean[] sinCambios = new boolean[1];
+        long[] cicloCapturado = new long[1];
+        int[] seriesCapturadas = new int[1];
 
         simulador.leerEstado(() -> {
             HistorialUtilizacion h = simulador.getHistorialUtilizacion();
+            long ciclo = simulador.getCicloActual();
+            int nSeries = h.getCantidadSeries();
+            if (ciclo == ultimoCicloPintado && nSeries == ultimaCantidadSeries
+                    && vista != null && vista.equals(ultimaVistaPintada)) {
+                sinCambios[0] = true;
+                return;
+            }
+            cicloCapturado[0] = ciclo;
+            seriesCapturadas[0] = nSeries;
+
             XYSeriesCollection coleccion = new XYSeriesCollection();
             StringBuilder texto = new StringBuilder();
-            int nSeries = h.getCantidadSeries();
 
             for (int i = 0; i < nSeries; i++) {
                 String prefijo = (nSeries > 1) ? (h.getNombre(i) + " – ") : "";
@@ -179,6 +194,13 @@ public class VentanaGrafica extends JDialog {
                     ? "Sin datos todavía: inicia la simulación para observar el detalle por ciclo."
                     : texto.toString();
         });
+
+        if (sinCambios[0]) {
+            return;
+        }
+        ultimoCicloPintado = cicloCapturado[0];
+        ultimaCantidadSeries = seriesCapturadas[0];
+        ultimaVistaPintada = vista;
 
         XYPlot grafica = grafico.getXYPlot();
         XYLineAndShapeRenderer renderizador = new XYLineAndShapeRenderer(true, false);

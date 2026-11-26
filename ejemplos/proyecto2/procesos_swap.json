@@ -1,0 +1,18 @@
+{
+  "globalConfig": {
+    "cycleDurationMs": 500,
+    "swapSizeBlocks": 100,
+    "initialDiskPolicy": "FIFO"
+  },
+  "computer": {
+    "ramCapacity": 32,
+    "policy": "FCFS",
+    "quantum": 0
+  },
+  "processes": [
+    { "name": "Proc_Video", "memory": 16, "deadline": 500, "instructions": 2, "priority": 5, "targetPath": "/usuarios/video.mp4", "operation": "READ" },
+    { "name": "Proc_Data",  "memory": 16, "deadline": 500, "instructions": 2, "priority": 1, "targetPath": "/usuarios/data.csv",  "operation": "READ" },
+    { "name": "Proc_Boot",  "memory": 16, "deadline": 500, "instructions": 2, "priority": 2, "targetPath": "/sistema/boot.bin",   "operation": "READ" },
+    { "name": "Proc_Notas", "memory": 16, "deadline": 500, "instructions": 2, "priority": 3, "targetPath": "/usuarios/notas.txt", "operation": "READ" }
+  ]
+}

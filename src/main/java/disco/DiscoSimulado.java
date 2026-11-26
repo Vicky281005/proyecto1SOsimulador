@@ -200,6 +200,7 @@ public class DiscoSimulado implements ComponenteReloj {
             if (posicionCabezal >= totalBloquesDatos) {
                 posicionCabezal = Math.max(0, totalBloquesDatos - 1);
             }
+            direccionAscendente = true;
         } finally {
             mutex.release();
         }
@@ -235,6 +236,9 @@ public class DiscoSimulado implements ComponenteReloj {
             this.politicaActual = politica;
             if (politica != PoliticaDisco.SCAN && politica != PoliticaDisco.C_SCAN) {
                 this.metaExtremoPendiente = -1;
+            }
+            if (politica == PoliticaDisco.C_SCAN && solicitudActual == null) {
+                this.direccionAscendente = true;
             }
             pendientes = planificador.getCantidadPendientes();
             logCambio = this.logEventos;
@@ -664,6 +668,9 @@ public class DiscoSimulado implements ComponenteReloj {
 
     private int calcularLimiteSuperiorSCAN() {
         int limite = Math.max(0, totalBloquesDatos - 1);
+        if (posicionCabezal > limite) {
+            return bloques.length - 1;
+        }
         if (solicitudActual != null && solicitudActual.getBloqueDestino() > limite) {
             limite = bloques.length - 1;
         }

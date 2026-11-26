@@ -3,7 +3,6 @@ package gui;
 import archivos.NodoArchivo;
 import archivos.SistemaArchivos;
 import disco.DiscoSimulado;
-import disco.OperacionRechazadaException;
 import enums.ModoUsuario;
 import enums.PermisoArchivo;
 import enums.TipoOperacionES;
@@ -305,24 +304,100 @@ public class PanelExploradorArchivos extends JPanel {
         this.operacionesHabilitadas = habilitado;
     }
 
+    /** Snapshot inmutable del estado del sistema de archivos capturado dentro de {@code leerEstado}. */
+    static final class Snapshot {
+        final boolean haySistemaArchivos;
+        final boolean limiteAlcanzado;
+        final int cantidadComputadores;
+        final NodoArchivo copiaRaiz;
+        final ListaEnlazada<NodoArchivo> archivos;
+        final int bloquesLibres;
+        final int cantidadDirectorios;
+        final String firma;
+        final NodoArchivo nodoSeleccionado;
+        final ListaEnlazada<Integer> cadenaBloquesSeleccionado;
+
+        Snapshot(boolean haySistemaArchivos, boolean limiteAlcanzado, int cantidadComputadores,
+                 NodoArchivo copiaRaiz, ListaEnlazada<NodoArchivo> archivos,
+                 int bloquesLibres, int cantidadDirectorios, String firma,
+                 NodoArchivo nodoSeleccionado, ListaEnlazada<Integer> cadenaBloquesSeleccionado) {
+            this.haySistemaArchivos = haySistemaArchivos;
+            this.limiteAlcanzado = limiteAlcanzado;
+            this.cantidadComputadores = cantidadComputadores;
+            this.copiaRaiz = copiaRaiz;
+            this.archivos = archivos;
+            this.bloquesLibres = bloquesLibres;
+            this.cantidadDirectorios = cantidadDirectorios;
+            this.firma = firma;
+            this.nodoSeleccionado = nodoSeleccionado;
+            this.cadenaBloquesSeleccionado = cadenaBloquesSeleccionado;
+        }
+    }
+
     /**
-     * Lee el estado actual del {@link SistemaArchivos} y refresca el árbol, la tabla,
-     * los detalles y el estado de botones cuando ocurren cambios.
+     * Captura un snapshot de solo lectura del sistema de archivos y disco (sin mutar Swing).
+     * Debe llamarse dentro de {@link Simulador#leerEstado(Runnable)}.
      */
-    public final void actualizar() {
+    Snapshot capturarSnapshot() {
         SistemaArchivos sa = (simulador != null && simulador.getServicioArchivos() instanceof SistemaArchivos s)
                 ? s : null;
         DiscoSimulado disco = (simulador != null) ? simulador.getDisco() : null;
         boolean limiteAlcanzado = (simulador != null && simulador.isLimiteAlcanzado());
-        boolean listoParaOperar = (sa != null && operacionesHabilitadas && !limiteAlcanzado
-                && simulador.getCantidadComputadores() > 0);
+        int cantPcs = (simulador != null) ? simulador.getCantidadComputadores() : 0;
+
+        if (sa == null) {
+            return new Snapshot(false, limiteAlcanzado, cantPcs, null, null, 0, 0, "SIN_FS", null, null);
+        }
+
+        NodoArchivo copiaRaiz = sa.obtenerCopiaArbol();
+        ListaEnlazada<NodoArchivo> archivos = sa.listarTodosLosArchivos();
+        int libres = (disco != null) ? disco.getBloquesLibresDatos() : 0;
+        int dirs = sa.getCantidadDirectorios();
+        String firmaNueva = construirFirma(copiaRaiz, archivos, libres);
+
+        NodoArchivo seleccionado = buscarEnCopiaArbol(copiaRaiz, rutaSeleccionadaActual);
+        ListaEnlazada<Integer> cadenaSel = null;
+        if (seleccionado != null && seleccionado.esArchivo()
+                && disco != null && seleccionado.getPrimerBloque() >= 0) {
+            cadenaSel = disco.obtenerCadenaBloques(seleccionado.getPrimerBloque());
+        }
+        return new Snapshot(true, limiteAlcanzado, cantPcs, copiaRaiz, archivos,
+                libres, dirs, firmaNueva, seleccionado, cadenaSel);
+    }
+
+    private static NodoArchivo buscarEnCopiaArbol(NodoArchivo nodo, String rutaBuscada) {
+        if (nodo == null || rutaBuscada == null) {
+            return null;
+        }
+        if (rutaBuscada.equals(nodo.getRuta())) {
+            return nodo;
+        }
+        Iterador<NodoArchivo> it = nodo.iteradorHijos();
+        while (it.haySiguiente()) {
+            NodoArchivo encontrado = buscarEnCopiaArbol(it.siguiente(), rutaBuscada);
+            if (encontrado != null) {
+                return encontrado;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Aplica sobre el árbol, tabla y etiquetas de Swing un snapshot ya capturado (fuera de {@code mutexEstado}).
+     */
+    void aplicarSnapshot(Snapshot snap) {
+        if (snap == null) {
+            return;
+        }
+        boolean listoParaOperar = (snap.haySistemaArchivos && operacionesHabilitadas
+                && !snap.limiteAlcanzado && snap.cantidadComputadores > 0);
 
         btnCrear.setEnabled(listoParaOperar);
         btnLeer.setEnabled(listoParaOperar);
         btnRenombrar.setEnabled(listoParaOperar);
         btnEliminar.setEnabled(listoParaOperar);
 
-        if (sa == null) {
+        if (!snap.haySistemaArchivos) {
             if (!"SIN_FS".equals(firmaUltimaVista)) {
                 firmaUltimaVista = "SIN_FS";
                 modeloArbol.setRoot(nodoRaizVacio);
@@ -333,33 +408,34 @@ public class PanelExploradorArchivos extends JPanel {
             return;
         }
 
-        NodoArchivo copiaRaiz = sa.obtenerCopiaArbol();
-        ListaEnlazada<NodoArchivo> archivos = sa.listarTodosLosArchivos();
-        int libres = (disco != null) ? disco.getBloquesLibresDatos() : 0;
-        String firmaNueva = construirFirma(copiaRaiz, archivos, libres);
-
-        if (!firmaNueva.equals(firmaUltimaVista)) {
-            firmaUltimaVista = firmaNueva;
-            reconstruirArbolPreservandoEstado(copiaRaiz);
-            modeloTabla.actualizarFilas(archivos);
+        if (!snap.firma.equals(firmaUltimaVista)) {
+            firmaUltimaVista = snap.firma;
+            reconstruirArbolPreservandoEstado(snap.copiaRaiz);
+            modeloTabla.actualizarFilas(snap.archivos);
             sincronizarFilaTablaConRuta(rutaSeleccionadaActual);
-            NodoArchivo actual = sa.buscarPorRuta(rutaSeleccionadaActual);
-            if (actual != null) {
-                mostrarDetalles(actual);
+            if (snap.nodoSeleccionado != null) {
+                mostrarDetalles(snap.nodoSeleccionado, snap.cadenaBloquesSeleccionado);
             } else {
                 rutaSeleccionadaActual = "/";
                 seleccionarRutaEnArbol("/");
-                mostrarDetalles(copiaRaiz);
+                mostrarDetalles(snap.copiaRaiz, null);
             }
         }
 
-        int dirs = sa.getCantidadDirectorios();
         String resumen = String.format("Directorios: %d  |  Archivos: %d  |  Bloques libres: %d",
-                dirs, archivos.getTamano(), libres);
+                snap.cantidadDirectorios, snap.archivos.getTamano(), snap.bloquesLibres);
         if (!mensajeUltimaAccion.isEmpty()) {
             resumen += "  |  " + mensajeUltimaAccion;
         }
         lblEstadoBarra.setText(resumen);
+    }
+
+    /**
+     * Lee el estado actual del {@link SistemaArchivos} y refresca el árbol, la tabla,
+     * los detalles y el estado de botones cuando ocurren cambios.
+     */
+    public final void actualizar() {
+        aplicarSnapshot(capturarSnapshot());
     }
 
     private String construirFirma(NodoArchivo raiz, ListaEnlazada<NodoArchivo> archivos, int libres) {
@@ -515,6 +591,17 @@ public class PanelExploradorArchivos extends JPanel {
     }
 
     private void mostrarDetalles(NodoArchivo nodo) {
+        ListaEnlazada<Integer> cadena = null;
+        if (nodo != null && !nodo.esDirectorio() && nodo.getPrimerBloque() >= 0) {
+            DiscoSimulado disco = (simulador != null) ? simulador.getDisco() : null;
+            if (disco != null) {
+                cadena = disco.obtenerCadenaBloques(nodo.getPrimerBloque());
+            }
+        }
+        mostrarDetalles(nodo, cadena);
+    }
+
+    private void mostrarDetalles(NodoArchivo nodo, ListaEnlazada<Integer> cadena) {
         if (nodo == null) {
             limpiarDetalles();
             return;
@@ -542,9 +629,7 @@ public class PanelExploradorArchivos extends JPanel {
         lblDetColor.setIcon(ModeloTablaArchivos.crearIconoColor(c, 14, 12));
         lblDetColor.setText(nodo.getColorHex().isEmpty() ? "Por defecto" : nodo.getColorHex());
 
-        DiscoSimulado disco = (simulador != null) ? simulador.getDisco() : null;
-        if (disco != null && nodo.getPrimerBloque() >= 0) {
-            ListaEnlazada<Integer> cadena = disco.obtenerCadenaBloques(nodo.getPrimerBloque());
+        if (cadena != null && !cadena.estaVacia()) {
             String textoCompleto = formatearCadena(cadena, false);
             lblDetCadena.setText(formatearCadena(cadena, true));
             lblDetCadena.setToolTipText(textoCompleto);
@@ -700,6 +785,14 @@ public class PanelExploradorArchivos extends JPanel {
         ModoUsuario modo = getModoSeleccionado();
         String usuario = getUsuarioActivo();
 
+        // Validar permisos y restricciones del nodo ANTES de solicitar el nuevo nombre.
+        String errorPrevio = validarOperacionGUI(sa, TipoOperacionES.ACTUALIZAR, sel.getRuta(),
+                sel.getNombre(), 0, modo, usuario, sel.esDirectorio());
+        if (errorPrevio != null) {
+            mostrarErrorValidacion(errorPrevio);
+            return;
+        }
+
         String nuevoNombre = JOptionPane.showInputDialog(this,
                 "Nuevo nombre para '" + sel.getRuta() + "':", sel.getNombre());
         if (nuevoNombre == null) {
@@ -768,8 +861,8 @@ public class PanelExploradorArchivos extends JPanel {
     }
 
     /**
-     * Valida en la GUI tanto sintaxis como permisos de {@link ModoUsuario#ADMINISTRADOR} vs
-     * {@link ModoUsuario#USUARIO} de forma consistente con {@link SistemaArchivos}.
+     * Valida sintaxis, existencia, permisos de {@link ModoUsuario#ADMINISTRADOR} vs.
+     * {@link ModoUsuario#USUARIO} y espacio libre delegando en {@link SistemaArchivos#validarOperacion}.
      *
      * @return mensaje descriptivo del error si no es válido, o {@code null} si procede.
      */
@@ -779,101 +872,7 @@ public class PanelExploradorArchivos extends JPanel {
         if (sa == null) {
             return "No hay un sistema de archivos activo.";
         }
-        if (usuario == null || usuario.trim().isEmpty()) {
-            return "Debe indicar un nombre de usuario activo válido.";
-        }
-        String rutaNorm;
-        try {
-            rutaNorm = SistemaArchivos.normalizarRuta(ruta);
-        } catch (OperacionRechazadaException ex) {
-            return ex.getMessage();
-        }
-
-        if (op == TipoOperacionES.CREAR) {
-            if ("/".equals(rutaNorm)) {
-                return "No se puede crear la raíz '/'.";
-            }
-            if (sa.buscarPorRuta(rutaNorm) != null) {
-                return "Ya existe una entrada en '" + rutaNorm + "'.";
-            }
-            String padreRuta = obtenerPadreVisual(rutaNorm);
-            NodoArchivo padre = sa.buscarPorRuta(padreRuta);
-            if (padre == null) {
-                return "El directorio padre '" + padreRuta + "' no existe.";
-            }
-            if (!padre.esDirectorio()) {
-                return "La ruta padre '" + padreRuta + "' es un archivo, no un directorio.";
-            }
-            if (!modo.esAdministrador()) {
-                if (esDirectorioCrear) {
-                    return "Permiso denegado: en modo Usuario solo el Administrador puede crear directorios.";
-                }
-                if (!padre.getDueno().equalsIgnoreCase(usuario.trim())) {
-                    return "Permiso denegado: el usuario '" + usuario.trim()
-                            + "' solo puede crear archivos en directorios propios ('"
-                            + padre.getRuta() + "' pertenece a '" + padre.getDueno() + "').";
-                }
-            }
-            if (!esDirectorioCrear) {
-                if (tamanoBloques <= 0) {
-                    return "El archivo debe tener al menos 1 bloque.";
-                }
-                DiscoSimulado d = sa.getDisco();
-                if (d != null && tamanoBloques > d.getBloquesLibresDatos()) {
-                    return "Espacio insuficiente en disco (" + tamanoBloques + " requeridos, "
-                            + d.getBloquesLibresDatos() + " libres).";
-                }
-            }
-            return null;
-        }
-
-        if ("/".equals(rutaNorm)) {
-            return "La operación " + op.getEtiqueta() + " no puede aplicarse sobre la raíz '/'.";
-        }
-        NodoArchivo nodo = sa.buscarPorRuta(rutaNorm);
-        if (nodo == null) {
-            return "La ruta '" + rutaNorm + "' no existe.";
-        }
-
-        if (op == TipoOperacionES.LEER) {
-            if (nodo.esDirectorio()) {
-                return "No se puede leer un directorio como archivo ('" + rutaNorm + "').";
-            }
-            if (!modo.esAdministrador() && !nodo.esPublico() && !nodo.getDueno().equalsIgnoreCase(usuario.trim())) {
-                return "Acceso denegado: el archivo '" + rutaNorm + "' es privado y pertenece a '"
-                        + nodo.getDueno() + "'.";
-            }
-            return null;
-        }
-
-        if (op == TipoOperacionES.ACTUALIZAR || op == TipoOperacionES.ELIMINAR) {
-            if (!modo.esAdministrador()) {
-                if (nodo.esDirectorio()) {
-                    return "Permiso denegado: en modo Usuario solo el Administrador puede modificar o eliminar directorios.";
-                }
-                if (!nodo.getDueno().equalsIgnoreCase(usuario.trim())) {
-                    return "Permiso denegado: '" + usuario.trim() + "' no puede "
-                            + (op == TipoOperacionES.ELIMINAR ? "eliminar" : "modificar")
-                            + " '" + rutaNorm + "' (dueño: '" + nodo.getDueno() + "').";
-                }
-            }
-            if (op == TipoOperacionES.ACTUALIZAR) {
-                if (nuevoNombre == null || nuevoNombre.trim().isEmpty()) {
-                    return "El nuevo nombre no puede estar vacío.";
-                }
-                if (nuevoNombre.contains("/")) {
-                    return "El nuevo nombre no debe contener '/'.";
-                }
-                String rutaDestino = "/".equals(obtenerPadreVisual(rutaNorm))
-                        ? "/" + nuevoNombre.trim()
-                        : obtenerPadreVisual(rutaNorm) + "/" + nuevoNombre.trim();
-                if (!rutaDestino.equals(rutaNorm) && sa.buscarPorRuta(rutaDestino) != null) {
-                    return "Ya existe una entrada llamada '" + nuevoNombre.trim() + "' en esa carpeta.";
-                }
-            }
-            return null;
-        }
-        return null;
+        return sa.validarOperacion(op, ruta, nuevoNombre, tamanoBloques, modo, usuario, esDirectorioCrear);
     }
 
     private SistemaArchivos obtenerSistemaArchivosActivo() {

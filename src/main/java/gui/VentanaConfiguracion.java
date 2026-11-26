@@ -101,11 +101,17 @@ public class VentanaConfiguracion extends JFrame {
         this.simuladorExistente = simuladorExistente;
 
         if (simuladorExistente != null) {
-            this.config = ConfiguracionSimulacion.desdeSimulador(simuladorExistente);
-            if (simuladorExistente.getServicioArchivos() instanceof SistemaArchivos sa
-                    && simuladorExistente.isSistemaArchivosJsonCargado()) {
-                this.fsCargado = ConfigSistemaArchivos.desdeSistemaArchivos(sa);
-            }
+            ConfiguracionSimulacion[] cfgRef = new ConfiguracionSimulacion[1];
+            ConfigSistemaArchivos[] fsRef = new ConfigSistemaArchivos[1];
+            simuladorExistente.leerEstado(() -> {
+                cfgRef[0] = ConfiguracionSimulacion.desdeSimulador(simuladorExistente);
+                if (simuladorExistente.getServicioArchivos() instanceof SistemaArchivos sa
+                        && simuladorExistente.isSistemaArchivosJsonCargado()) {
+                    fsRef[0] = ConfigSistemaArchivos.desdeSistemaArchivos(sa);
+                }
+            });
+            this.config = cfgRef[0];
+            this.fsCargado = fsRef[0];
         } else {
             this.config = ConfiguracionSimulacion.crearPorDefecto();
         }
@@ -366,11 +372,15 @@ public class VentanaConfiguracion extends JFrame {
             destino = new File(destino.getAbsolutePath() + ".json");
         }
         try {
+            ConfigSistemaArchivos snapshotFs;
             if (saVivo != null) {
-                GestorPersistencia.guardarSistemaArchivosJSON(saVivo, destino);
+                ConfigSistemaArchivos[] snapRef = new ConfigSistemaArchivos[1];
+                simuladorExistente.leerEstado(() -> snapRef[0] = ConfigSistemaArchivos.desdeSistemaArchivos(saVivo));
+                snapshotFs = snapRef[0];
             } else {
-                GestorPersistencia.guardarSistemaArchivosJSON(fsCargado, destino);
+                snapshotFs = fsCargado;
             }
+            GestorPersistencia.guardarSistemaArchivosJSON(snapshotFs, destino);
             JOptionPane.showMessageDialog(this,
                     "Estado del sistema de archivos guardado en:\n" + destino.getAbsolutePath(),
                     "Guardado exitoso", JOptionPane.INFORMATION_MESSAGE);
@@ -389,6 +399,13 @@ public class VentanaConfiguracion extends JFrame {
             return;
         }
         try {
+            fsCargado.validarEstricto();
+            procCargado.validarEstricto();
+            if (simuladorExistente != null) {
+                simuladorExistente.detener();
+            }
+            modelo.PCB.reiniciarGeneradorId();
+            disco.SolicitudES.reiniciarGeneradorId();
             Simulador nuevoSim = GestorPersistencia.construirSimuladorDesdeDosJSON(fsCargado, procCargado);
             lanzarVistaEstado(nuevoSim);
         } catch (Exception ex) {
@@ -418,6 +435,8 @@ public class VentanaConfiguracion extends JFrame {
             if (simuladorExistente != null) {
                 simuladorExistente.detener();
             }
+            modelo.PCB.reiniciarGeneradorId();
+            disco.SolicitudES.reiniciarGeneradorId();
             Simulador nuevoSim = GestorPersistencia.construirSimuladorPreservandoDisco(saVivo, procCargado);
             lanzarVistaEstado(nuevoSim);
         } catch (Exception ex) {
@@ -443,8 +462,10 @@ public class VentanaConfiguracion extends JFrame {
         config.setTamanoSwap(j2.getGlobalConfig().getSwapSizeBlocks());
         config.setPoliticaDiscoInicial(j2.getPoliticaDiscoEnum());
 
+        int idPc = 1;
         if (!config.getComputadores().estaVacia()) {
             ConfigComputador pc = config.getComputadores().obtener(0);
+            idPc = pc.getId();
             pc.setMemoriaTotal(j2.getComputer().getRamCapacity());
             pc.setPolitica(j2.getPoliticaCpuEnum());
             if (j2.getComputer().getQuantum() > 0) {
@@ -452,6 +473,40 @@ public class VentanaConfiguracion extends JFrame {
             }
             tablaComputadoresModel.fireTableDataChanged();
         }
+
+        config.getProcesos().vaciar();
+        if (j2.getProcesses() != null) {
+            int idProc = 1;
+            Iterador<ConfigProcesosDisco.ProcesoJson> it = j2.getProcesses().iterador();
+            while (it.haySiguiente()) {
+                ConfigProcesosDisco.ProcesoJson pj = it.siguiente();
+                if (pj == null) {
+                    continue;
+                }
+                boolean esES = pj.getOperation() != null && !pj.getOperation().trim().isEmpty();
+                TipoOperacionES op = esES ? TipoOperacionES.desdeTexto(pj.getOperation()) : null;
+                int prioridad = (pj.getPriority() != null && pj.getPriority() > 0) ? pj.getPriority() : 1;
+                int tamBloques = (pj.getFileSizeBlocks() != null) ? Math.max(0, pj.getFileSizeBlocks()) : 0;
+                config.getProcesos().agregar(new ConfigProceso(
+                        idProc++,
+                        pj.getName(),
+                        esES ? TipoProceso.IO_BOUND : TipoProceso.CPU_BOUND,
+                        idPc,
+                        pj.getInstructions(),
+                        pj.getMemory(),
+                        prioridad,
+                        pj.getDeadline(),
+                        esES ? 1 : 0,
+                        1,
+                        op,
+                        pj.getTargetPath(),
+                        tamBloques,
+                        pj.getNewName(),
+                        ModoUsuario.desdeTexto(pj.getMode()),
+                        pj.getOwner()));
+            }
+        }
+        tablaProcesosModel.fireTableDataChanged();
         actualizarCamposGlobales();
     }
 
@@ -676,6 +731,11 @@ public class VentanaConfiguracion extends JFrame {
             return;
         }
         try {
+            if (simuladorExistente != null) {
+                simuladorExistente.detener();
+            }
+            modelo.PCB.reiniciarGeneradorId();
+            disco.SolicitudES.reiniciarGeneradorId();
             Simulador nuevoSim = config.aSimulador();
             lanzarVistaEstado(nuevoSim);
         } catch (Exception ex) {
@@ -710,6 +770,11 @@ public class VentanaConfiguracion extends JFrame {
             config.setVelocidadCabezal(vel);
             config.setPoliticaDiscoInicial((PoliticaDisco) comboPoliticaDisco.getSelectedItem());
             return true;
+        } catch (NumberFormatException ex) {
+            JOptionPane.showMessageDialog(this,
+                    "Todos los parámetros globales y del disco deben ser números enteros válidos.",
+                    "Validación", JOptionPane.ERROR_MESSAGE);
+            return false;
         } catch (Exception ex) {
             JOptionPane.showMessageDialog(this, "Parámetros globales/disco inválidos: " + ex.getMessage(),
                     "Validación", JOptionPane.ERROR_MESSAGE);
