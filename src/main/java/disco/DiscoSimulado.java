@@ -56,6 +56,7 @@ public class DiscoSimulado implements ComponenteReloj {
     private long sumaTiemposEspera;
     private final long[] solicitudesPorPolitica = new long[PoliticaDisco.values().length];
     private final ListaEnlazada<Long> historialDesplazamiento = new ListaEnlazada<>();
+    private final ListaEnlazada<PoliticaDisco> historialPolitica = new ListaEnlazada<>();
 
     /**
      * Crea un disco con valores por defecto (200 bloques, cabezal en el bloque 50,
@@ -538,6 +539,7 @@ public class DiscoSimulado implements ComponenteReloj {
             }
 
             historialDesplazamiento.agregar(desplazamientoTotal);
+            historialPolitica.agregar(politicaActual);
         } finally {
             mutex.release();
         }
@@ -795,10 +797,19 @@ public class DiscoSimulado implements ComponenteReloj {
 
     /** Historial ciclo a ciclo del desplazamiento acumulado del cabezal para la gráfica. */
     public ListaEnlazada<Long> copiarHistorialDesplazamiento() {
-        ListaEnlazada<Long> copia = new ListaEnlazada<>();
+        return copiarListaLocked(historialDesplazamiento);
+    }
+
+    /** Historial ciclo a ciclo de la política de planificación activa en el disco. */
+    public ListaEnlazada<PoliticaDisco> copiarHistorialPolitica() {
+        return copiarListaLocked(historialPolitica);
+    }
+
+    private <T> ListaEnlazada<T> copiarListaLocked(ListaEnlazada<T> origen) {
+        ListaEnlazada<T> copia = new ListaEnlazada<>();
         mutex.acquireUninterruptibly();
         try {
-            Iterador<Long> it = historialDesplazamiento.iterador();
+            Iterador<T> it = origen.iterador();
             while (it.haySiguiente()) {
                 copia.agregar(it.siguiente());
             }

@@ -27,6 +27,12 @@ public class CPU implements ComponenteReloj {
     /** Total de instrucciones ejecutadas por esta CPU durante la simulación. */
     private long ciclosEjecutados;
 
+    /** Total de instrucciones ejecutadas en modo usuario. */
+    private long ciclosUsuario;
+
+    /** Total de instrucciones ejecutadas en modo kernel. */
+    private long ciclosKernel;
+
     /** Instrucciones ejecutadas por el proceso cargado actualmente (para el quantum). */
     private long ciclosProcesoActual;
 
@@ -35,6 +41,8 @@ public class CPU implements ComponenteReloj {
         this.procesoActual = null;
         this.modo = ModoCPU.USUARIO;
         this.ciclosEjecutados = 0;
+        this.ciclosUsuario = 0;
+        this.ciclosKernel = 0;
         this.ciclosProcesoActual = 0;
     }
 
@@ -100,6 +108,11 @@ public class CPU implements ComponenteReloj {
         // Una instrucción ocupa exactamente un ciclo de reloj.
         procesoActual.avanzarPasoCpu(cicloActual);
         this.ciclosEjecutados++;
+        if (this.modo == ModoCPU.KERNEL) {
+            this.ciclosKernel++;
+        } else {
+            this.ciclosUsuario++;
+        }
         this.ciclosProcesoActual++;
     }
 
@@ -131,6 +144,7 @@ public class CPU implements ComponenteReloj {
     public void registrarPasoEjecutado() {
         this.modo = ModoCPU.KERNEL;
         this.ciclosEjecutados++;
+        this.ciclosKernel++;
         this.ciclosProcesoActual++;
     }
 
@@ -152,6 +166,16 @@ public class CPU implements ComponenteReloj {
     /** Total de instrucciones ejecutadas por esta CPU. */
     public long getCiclosEjecutados() {
         return ciclosEjecutados;
+    }
+
+    /** Total de instrucciones ejecutadas en modo usuario. */
+    public long getCiclosUsuario() {
+        return ciclosUsuario;
+    }
+
+    /** Total de instrucciones ejecutadas en modo kernel / E/S. */
+    public long getCiclosKernel() {
+        return ciclosKernel;
     }
 
     /** Instrucciones que lleva ejecutadas el proceso cargado (control del quantum). */

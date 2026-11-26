@@ -98,6 +98,40 @@ public class GraficaDiscoPrueba {
         verificar(!m2.getDisco().hayDisco && m2.formatear().contains("sin disco configurado"),
                 "sin disco: avisa en lugar de fallar");
 
+        System.out.println("-- Cambios de política en caliente");
+        DiscoSimulado d2 = new DiscoSimulado("Disco2", 200, 50, 20);
+        d2.setPolitica(PoliticaDisco.FIFO);
+        for (long c = 1; c <= 10; c++) d2.tick(c);
+        d2.setPolitica(PoliticaDisco.SSTF);
+        for (long c = 11; c <= 20; c++) d2.tick(c);
+        d2.setPolitica(PoliticaDisco.SCAN);
+        for (long c = 21; c <= 30; c++) d2.tick(c);
+        ListaEnlazada<PoliticaDisco> hPol = d2.copiarHistorialPolitica();
+        verificar(hPol.getTamano() == 30, "guardó la política por ciclo (30)");
+        ListaEnlazada<SerieDesplazamiento.CambioPolitica> cambios =
+                SerieDesplazamiento.detectarCambiosPolitica(hPol);
+        verificar(cambios.getTamano() == 3
+                && cambios.obtener(0).ciclo == 1 && cambios.obtener(0).politica == PoliticaDisco.FIFO
+                && cambios.obtener(1).ciclo == 11 && cambios.obtener(1).politica == PoliticaDisco.SSTF
+                && cambios.obtener(2).ciclo == 21 && cambios.obtener(2).politica == PoliticaDisco.SCAN,
+                "detecta ciclo exacto de política inicial y cambios en caliente (1=FIFO, 11=SSTF, 21=SCAN)");
+
+        if (!java.awt.GraphicsEnvironment.isHeadless()) {
+            try {
+                javax.swing.SwingUtilities.invokeAndWait(() -> {
+                    gui.VentanaGraficaDisco vgDisco = new gui.VentanaGraficaDisco(null, sim);
+                    gui.VentanaGrafica vgCpu = new gui.VentanaGrafica(null, sim);
+                    vgDisco.refrescar();
+                    vgCpu.refrescar();
+                    vgDisco.dispose();
+                    vgCpu.dispose();
+                });
+                verificar(true, "VentanaGraficaDisco y VentanaGrafica se construyen y refrescan sin errores");
+            } catch (Exception e) {
+                verificar(false, "VentanaGraficaDisco / VentanaGrafica fallaron: " + e.getMessage());
+            }
+        }
+
         System.out.println(fallos == 0 ? "TODAS LAS PRUEBAS PASARON (" + ok + ")" : "HAY " + fallos + " FALLOS");
         if (fallos > 0) System.exit(1);
     }

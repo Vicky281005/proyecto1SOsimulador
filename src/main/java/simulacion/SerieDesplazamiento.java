@@ -1,17 +1,29 @@
 package simulacion;
 
+import enums.PoliticaDisco;
 import estructuras.Iterador;
 import estructuras.ListaEnlazada;
 
 /**
- * Convierte el historial ciclo a ciclo del desplazamiento acumulado del cabezal del
- * disco en los puntos (ciclo, bloques recorridos) de la gráfica.
+ * Convierte los historiales ciclo a ciclo del disco (desplazamiento acumulado y
+ * cambios de política) en series listas para {@link gui.VentanaGraficaDisco}.
  *
  * <p>Es lógica pura, sin Swing ni JFreeChart, para poder probarla sin pantalla. Si el
  * historial es más largo que el máximo de puntos, toma uno de cada varios y conserva
  * siempre el último, de modo que la línea termina en el valor real.</p>
  */
 public final class SerieDesplazamiento {
+
+    /** Representa el inicio o cambio de política activa del disco en un ciclo específico. */
+    public static final class CambioPolitica {
+        public final int ciclo;
+        public final PoliticaDisco politica;
+
+        public CambioPolitica(int ciclo, PoliticaDisco politica) {
+            this.ciclo = ciclo;
+            this.politica = politica;
+        }
+    }
 
     private SerieDesplazamiento() {
     }
@@ -53,5 +65,28 @@ public final class SerieDesplazamiento {
             indice++;
         }
         return new double[][] {xs, ys};
+    }
+
+    /**
+     * Detecta la política inicial (ciclo 1) y cada ciclo en que ocurrió un cambio de
+     * política en caliente durante la simulación.
+     */
+    public static ListaEnlazada<CambioPolitica> detectarCambiosPolitica(ListaEnlazada<PoliticaDisco> historial) {
+        ListaEnlazada<CambioPolitica> cambios = new ListaEnlazada<>();
+        if (historial == null || historial.estaVacia()) {
+            return cambios;
+        }
+        PoliticaDisco previa = null;
+        int ciclo = 1;
+        Iterador<PoliticaDisco> it = historial.iterador();
+        while (it.haySiguiente()) {
+            PoliticaDisco actual = it.siguiente();
+            if (actual != null && actual != previa) {
+                cambios.agregar(new CambioPolitica(ciclo, actual));
+                previa = actual;
+            }
+            ciclo++;
+        }
+        return cambios;
     }
 }
