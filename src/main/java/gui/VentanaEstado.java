@@ -71,6 +71,7 @@ public class VentanaEstado extends JFrame {
 
     private boolean iniciada;
     private boolean detenida;
+    private boolean ajustandoDeslizador;
 
     /**
      * @param simulador simulador ya configurado (con sus computadores registrados).
@@ -335,8 +336,18 @@ public class VentanaEstado extends JFrame {
     }
 
     private void aplicarDuracion() {
+        if (ajustandoDeslizador) {
+            return;
+        }
         simulador.setDuracionCicloMs(deslizador.getValue());
         lblDuracion.setText(deslizador.getValue() + " ms");
+        if (!deslizador.getValueIsAdjusting() && ventanaDisco != null && ventanaDisco.isVisible()) {
+            SwingUtilities.invokeLater(() -> {
+                if (ventanaDisco != null && ventanaDisco.isVisible()) {
+                    ventanaDisco.toFront();
+                }
+            });
+        }
     }
 
     private void cerrar() {
@@ -448,6 +459,16 @@ public class VentanaEstado extends JFrame {
             lblCiclo.setText("Ciclo: " + cicloActual[0]);
             lblEstado.setText("Estado: " + textoEstado(hayTrabajo[0]));
             lblResumenDisco.setText(resumenDisco[0]);
+            int durSim = (int) Math.max(DURACION_MINIMA_MS, Math.min(simulador.getDuracionCicloMs(), DURACION_MAXIMA_MS));
+            if (!deslizador.getValueIsAdjusting() && deslizador.getValue() != durSim) {
+                ajustandoDeslizador = true;
+                try {
+                    deslizador.setValue(durSim);
+                    lblDuracion.setText(durSim + " ms");
+                } finally {
+                    ajustandoDeslizador = false;
+                }
+            }
             boolean esAdmin = panelArchivos.getModoSeleccionado().esAdministrador();
             btnIniciar.setEnabled(!iniciada && !detenida && !faltaJson[0]);
             btnPausa.setEnabled(iniciada && !detenida && !limiteAlcanzado[0]);

@@ -42,6 +42,7 @@ public class VentanaDisco extends JDialog {
     private final JComboBox<PoliticaDisco> comboPolitica = new JComboBox<>(PoliticaDisco.values());
     private final JSpinner spinVelocidad = new JSpinner(new SpinnerNumberModel(
             DiscoSimulado.VELOCIDAD_CABEZAL_POR_DEFECTO, 1, 1000, 1));
+    private final JSpinner spinCicloMs = new JSpinner(new SpinnerNumberModel(300, 20, 1000, 20));
     private final JLabel lblCabezal = new JLabel();
     private final JLabel lblActual = new JLabel();
     private final JLabel lblEspacio = new JLabel();
@@ -66,12 +67,21 @@ public class VentanaDisco extends JDialog {
             nf.setAllowsInvalid(false);
             nf.setCommitsOnValidEdit(true);
         }
+        if (spinCicloMs.getEditor() instanceof JSpinner.NumberEditor ne2
+                && ne2.getTextField().getFormatter() instanceof NumberFormatter nf2) {
+            nf2.setAllowsInvalid(false);
+            nf2.setCommitsOnValidEdit(true);
+        }
+        int cicloIni = (int) Math.max(20, Math.min(1000, simulador.getDuracionCicloMs()));
+        spinCicloMs.setValue(cicloIni);
 
         JPanel control = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 4));
         control.add(new JLabel("Política:"));
         control.add(comboPolitica);
-        control.add(new JLabel("Bloques por ciclo del cabezal:"));
+        control.add(new JLabel("Bloques/ciclo cabezal:"));
         control.add(spinVelocidad);
+        control.add(new JLabel("Duración ciclo (ms):"));
+        control.add(spinCicloMs);
         comboPolitica.addActionListener(e -> {
             DiscoSimulado d = simulador.getDisco();
             if (!actualizando && d != null && modoUsuario.esAdministrador()) {
@@ -82,6 +92,11 @@ public class VentanaDisco extends JDialog {
             DiscoSimulado d = simulador.getDisco();
             if (!actualizando && d != null && modoUsuario.esAdministrador()) {
                 d.setVelocidadCabezal((Integer) spinVelocidad.getValue());
+            }
+        });
+        spinCicloMs.addChangeListener(e -> {
+            if (!actualizando) {
+                simulador.setDuracionCicloMs((Integer) spinCicloMs.getValue());
             }
         });
 
@@ -278,6 +293,10 @@ public class VentanaDisco extends JDialog {
             }
             if (!spinVelocidad.getValue().equals(velocidad)) {
                 spinVelocidad.setValue(velocidad);
+            }
+            int durActual = (int) Math.max(20, Math.min(1000, simulador.getDuracionCicloMs()));
+            if (!spinCicloMs.getValue().equals(durActual)) {
+                spinCicloMs.setValue(durActual);
             }
         } finally {
             actualizando = false;
