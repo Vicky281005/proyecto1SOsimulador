@@ -87,7 +87,7 @@ public class MetricasPrueba {
         verificar(cerca(m.getEquidad(), jain) && m.getEquidad() < 1.0 && m.getEquidad() > 0.5,
                 "equidad de Jain = " + String.format("%.4f", jain) + " (B esperó a A, reparto desigual)");
         verificar(cerca(m.getBloqueadoPromedio(), 0.0) && m.getBloqueadoMaximo() == 0, "nadie se bloqueó: promedio 0");
-        verificar(m.getCantidadBuffers() == 0 && m.getCantidadComputadores() == 1, "sin buffers, 1 computador");
+        verificar(m.getCantidadComputadores() == 1, "1 computador");
 
         System.out.println("2) un proceso vence su deadline antes de terminar");
         Simulador s2 = unPc(PoliticaPlanificacion.FCFS, 1024);
@@ -103,7 +103,7 @@ public class MetricasPrueba {
         verificar(cerca(m2.getPorcentajeDeadlines(), 50.0), "50 % de deadlines cumplidos");
         verificar(m2.getThroughput() > 0 && m2.getThroughput() < 2.0 / 12 + 1e-9, "el cerrado por deadline no cuenta en el throughput");
 
-        System.out.println("3) buffer N=1 con 3 productores: bloqueos y contadores");
+        System.out.println("3) 3 productores sobre un recurso de capacidad 1: tiempo bloqueado");
         Simulador s3 = unPc(PoliticaPlanificacion.FCFS, 4096);
         Computador pc = s3.buscarComputador(1);
         Buffer buf = new Buffer("BUF", 1, 1, 4, pc);
@@ -117,24 +117,17 @@ public class MetricasPrueba {
         avanzar(s3, 6);
         MetricasSimulacion m3 = MetricasSimulacion.calcular(s3);
         verificar(m3.getBloqueadosAhora() == 2, "2 productores bloqueados ahora (" + m3.getBloqueadosAhora() + ")");
-        verificar(m3.getCantidadBuffers() == 1 && m3.getBuffer(0).producidos == 1 && m3.getBuffer(0).consumidos == 0
-                && m3.getBuffer(0).ocupacion == 1, "buffer: 1 producido, 0 consumidos, ocupación 1/1");
         long antes = p2.getTiempoBloqueadoAcumulado();
         verificar(antes > 0, "el tiempo bloqueado de Prod-2 ya no es 0 (" + antes + ")");
         avanzar(s3, 3);
         verificar(p2.getTiempoBloqueadoAcumulado() == antes + 3, "3 ciclos más bloqueado suman exactamente 3");
         verificar(MetricasSimulacion.calcular(s3).getBloqueadoMaximo() >= antes + 3, "el máximo bloqueado crece también");
 
-        System.out.println("4) un consumidor libera a los productores: producidos - consumidos = ocupación");
+        System.out.println("4) un consumidor libera a los productores: el promedio de bloqueo es mayor que 0");
         PCB c1 = consumidor("Cons-1", 1, buf, 1);
         s3.cargarProceso(c1);
         avanzar(s3, 40);
         MetricasSimulacion m4 = MetricasSimulacion.calcular(s3);
-        MetricasSimulacion.PorBuffer pb = m4.getBuffer(0);
-        verificar(pb.producidos >= 2 && pb.consumidos >= 1, "se produjo y se consumió (prod " + pb.producidos + ", cons " + pb.consumidos + ")");
-        verificar(pb.producidos - pb.consumidos == pb.ocupacion, "invariante: producidos − consumidos = ocupación (" + pb.ocupacion + ")");
-        verificar(pb.producidos == p1.getElementosProducidos() + p2.getElementosProducidos() + p3.getElementosProducidos()
-                && pb.consumidos == c1.getElementosConsumidos(), "los contadores del buffer coinciden con los de los procesos");
         verificar(m4.getBloqueadoPromedio() > 0, "el promedio de tiempo bloqueado es mayor que 0");
 
         System.out.println("5) simulador vacío y reporte");

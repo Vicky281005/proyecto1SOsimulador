@@ -1,5 +1,12 @@
 package simulacion;
 
+import disco.DiscoSimulado;
+import disco.EscuchaFinES;
+import disco.ServicioArchivos;
+import disco.SolicitudES;
+import enums.ModoUsuario;
+import enums.PermisoArchivo;
+import enums.TipoOperacionES;
 import estructuras.Iterador;
 import estructuras.ListaEnlazada;
 import hardware.Reloj;
@@ -43,7 +50,7 @@ import java.util.concurrent.TimeUnit;
  * cargar un proceso y al registrar un computador. Para <b>leer</b> el estado desde
  * otro hilo use {@link #leerEstado(Runnable)}, que toma ese mismo semáforo.</p>
  */
-public class Simulador {
+public class Simulador implements EscuchaFinES {
 
     /** Límite de ciclos usado cuando no se especifica uno. */
     public static final long CICLOS_MAXIMOS_POR_DEFECTO = 100_000L;
@@ -62,6 +69,10 @@ public class Simulador {
     private static final int PASO_LIMITE = 2;
 
     private final Reloj reloj;
+
+    // Proyecto 2: disco único y sistema de archivos
+    private DiscoSimulado disco;
+    private ServicioArchivos servicioArchivos;
     private final ListaEnlazada<Computador> computadores;
     private final long ciclosMaximos;
 
@@ -100,6 +111,11 @@ public class Simulador {
      */
     private volatile boolean mantenerRelojActivo = false;
     private volatile boolean notificadoFinOcioso = false;
+
+    // Proyecto 2: control de carga obligatoria de los 2 archivos JSON
+    private volatile boolean requiereCargaJsonObligatoria = false;
+    private volatile boolean sistemaArchivosJsonCargado = false;
+    private volatile boolean procesosJsonCargados = false;
 
     public boolean isMantenerRelojActivo() {
         return mantenerRelojActivo;
@@ -208,6 +224,123 @@ public class Simulador {
      *
      * @param computador computador a agregar.
      */
+    /**
+     * Conecta el disco al reloj global y a los computadores. El disco avisa cada
+     * operación terminada a este simulador, que se la entrega al computador dueño
+     * del proceso que la pidió.
+     */
+    public void setDisco(DiscoSimulado nuevoDisco) {
+        if (nuevoDisco == null) {
+            throw new IllegalArgumentException("El disco no puede ser nulo.");
+        }
+        mutexEstado.acquireUninterruptibly();
+        try {
+            if (disco != null) {
+                throw new IllegalStateException("El simulador ya tiene un disco registrado.");
+            }
+            disco = nuevoDisco;
+            disco.setEscuchaFinES(this);
+            disco.setLogEventos(logEventos);
+            reloj.registrar(disco);
+            Iterador<Computador> it = computadores.iterador();
+            while (it.haySiguiente()) {
+                it.siguiente().setDisco(disco);
+            }
+        } finally {
+            mutexEstado.release();
+        }
+    }
+
+    public DiscoSimulado getDisco() {
+        return disco;
+    }
+
+    public void setServicioArchivos(ServicioArchivos servicio) {
+        mutexEstado.acquireUninterruptibly();
+        try {
+            servicioArchivos = servicio;
+            Iterador<Computador> it = computadores.iterador();
+            while (it.haySiguiente()) {
+                it.siguiente().setServicioArchivos(servicio);
+            }
+        } finally {
+            mutexEstado.release();
+        }
+    }
+
+    public ServicioArchivos getServicioArchivos() {
+        return servicioArchivos;
+    }
+
+    public void marcarJsonCargados(boolean fsCargado, boolean procCargado) {
+        this.sistemaArchivosJsonCargado = fsCargado;
+        this.procesosJsonCargados = procCargado;
+    }
+
+    public boolean isSistemaArchivosJsonCargado() {
+        return sistemaArchivosJsonCargado;
+    }
+
+    public boolean isProcesosJsonCargados() {
+        return procesosJsonCargados;
+    }
+
+    public boolean tieneAmbosJsonCargados() {
+        return sistemaArchivosJsonCargado && procesosJsonCargados;
+    }
+
+    public boolean isRequiereCargaJsonObligatoria() {
+        return requiereCargaJsonObligatoria;
+    }
+
+    public void setRequiereCargaJsonObligatoria(boolean requiere) {
+        this.requiereCargaJsonObligatoria = requiere;
+    }
+
+    /**
+     * Pide una operación sobre el sistema de archivos. No toca el disco: crea un
+     * proceso de E/S en el computador indicado, que pasará por las colas normales.
+     */
+    public PCB solicitarOperacionES(int idComputador, String nombreProceso, TipoOperacionES operacion,
+                                    String ruta, String nuevoNombre, int tamanoBloques,
+                                    ModoUsuario modo, String usuario) {
+        return solicitarOperacionES(idComputador, nombreProceso, operacion, ruta, nuevoNombre,
+                tamanoBloques, modo, usuario, null);
+    }
+
+    /** Variante que permite indicar el permiso explícito al crear archivos/directorios como Administrador. */
+    public PCB solicitarOperacionES(int idComputador, String nombreProceso, TipoOperacionES operacion,
+                                    String ruta, String nuevoNombre, int tamanoBloques,
+                                    ModoUsuario modo, String usuario, PermisoArchivo permisoSolicitado) {
+        PCB creado;
+        mutexEstado.acquireUninterruptibly();
+        try {
+            Computador destino = buscarComputador(idComputador);
+            if (destino == null) {
+                throw new IllegalArgumentException("No existe un computador con id " + idComputador + ".");
+            }
+            creado = destino.crearProcesoES(nombreProceso, operacion, ruta, nuevoNombre,
+                    tamanoBloques, modo, usuario, permisoSolicitado, reloj.getCicloActual());
+            notificadoFinOcioso = false;
+        } finally {
+            mutexEstado.release();
+        }
+        trabajoNuevo.release();
+        return creado;
+    }
+
+    /** Llamado desde el hilo del disco: reenvía el aviso al computador del proceso. */
+    @Override
+    public void alTerminarSolicitud(SolicitudES solicitud, boolean exito, String detalle) {
+        if (solicitud == null || solicitud.getProceso() == null) {
+            return;
+        }
+        Computador destino = buscarComputador(solicitud.getProceso().getComputadorAsignado());
+        if (destino != null) {
+            destino.encolarFinES(solicitud, exito, detalle);
+        }
+    }
+
     public void registrarComputador(Computador computador) {
         if (computador == null) {
             throw new IllegalArgumentException("No se puede registrar un computador nulo.");
@@ -218,6 +351,8 @@ public class Simulador {
                 return; // ya estaba registrado, no se duplica
             }
             computador.setSimulador(this);
+            computador.setDisco(disco);
+            computador.setServicioArchivos(servicioArchivos);
             computadores.agregar(computador);
             reloj.registrar(computador);
         } finally {
@@ -296,7 +431,10 @@ public class Simulador {
                 Iterador<Computador> it = computadores.iterador();
                 while (it.haySiguiente()) {
                     Computador c = it.siguiente();
-                    if (c != null && c.getCantidadNuevos() == 0 && c.getPlanificador().estaVacio() && c.getCantidadBloqueados() == 0) {
+                    if (c != null && c.getCantidadNuevos() == 0 && c.getPlanificador().estaVacio()
+                            && c.getCantidadBloqueados() == 0
+                            && c.getCantidadListosSuspendidos() == 0
+                            && c.getCantidadBloqueadosSuspendidos() == 0) {
                         if (!c.getCpu().estaOciosa()) {
                             c.getCpu().liberar();
                         }
@@ -306,7 +444,7 @@ public class Simulador {
                     notificadoFinOcioso = true;
                     if (logEventos != null) {
                         logEventos.registrar(LogEventos.TipoEvento.OTRO,
-                                "Sin procesos activos en el clúster (Nuevos: 0, Listos: 0, Bloqueados: 0). CPU ociosa a la espera de nuevos procesos (ciclo "
+                                "Sin procesos activos en el computador (Nuevos: 0, Listos: 0, Bloqueados: 0). CPU ociosa a la espera de nuevos procesos (ciclo "
                                         + reloj.getCicloActual() + ").");
                     }
                 }
@@ -332,7 +470,9 @@ public class Simulador {
         Iterador<Computador> it = computadores.iterador();
         while (it.haySiguiente()) {
             Computador c = it.siguiente();
-            if (c != null && (c.getCantidadTerminados() > 0 || c.getCantidadNuevos() > 0 || c.getCantidadBloqueados() > 0 || !c.getPlanificador().estaVacio())) {
+            if (c != null && (c.getCantidadTerminados() > 0 || c.getCantidadNuevos() > 0
+                    || c.getCantidadBloqueados() > 0 || !c.getPlanificador().estaVacio()
+                    || c.getCantidadListosSuspendidos() > 0 || c.getCantidadBloqueadosSuspendidos() > 0)) {
                 return true;
             }
         }
@@ -486,6 +626,9 @@ public class Simulador {
 
     /** Indica si todavía queda trabajo por hacer en algún computador. */
     public boolean hayTrabajoPendiente() {
+        if (disco != null && disco.hayTrabajoPendiente()) {
+            return true;
+        }
         Iterador<Computador> iterador = computadores.iterador();
         while (iterador.haySiguiente()) {
             if (!iterador.siguiente().sinTrabajoPendiente()) {

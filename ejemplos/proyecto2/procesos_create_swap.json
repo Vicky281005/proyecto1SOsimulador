@@ -1,0 +1,17 @@
+{
+  "globalConfig": {
+    "cycleDurationMs": 300,
+    "swapSizeBlocks": 100,
+    "initialDiskPolicy": "SSTF"
+  },
+  "computer": {
+    "ramCapacity": 32,
+    "policy": "FCFS",
+    "quantum": 0
+  },
+  "processes": [
+    { "name": "Proc_Crear", "memory": 16, "deadline": 500, "instructions": 2, "priority": 5, "targetPath": "/usuarios/nuevo.txt", "operation": "CREATE", "fileSizeBlocks": 10 },
+    { "name": "Proc_Leer1", "memory": 16, "deadline": 500, "instructions": 2, "priority": 1, "targetPath": "/sistema/boot.bin", "operation": "READ" },
+    { "name": "Proc_Leer2_ForzaSwap", "memory": 16, "deadline": 500, "instructions": 2, "priority": 2, "targetPath": "/usuarios/data.csv", "operation": "READ" }
+  ]
+}

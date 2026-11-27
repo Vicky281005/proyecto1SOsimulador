@@ -67,6 +67,6 @@ public class ConfigComputador {
 
     @Override
     public String toString() {
-        return nombre + " [ID: " + id + ", RAM: " + memoriaTotal + " KB, " + politica + ", q=" + quantum + "]";
+        return nombre + " [ID: " + id + ", RAM: " + memoriaTotal + " bloques, " + politica + ", q=" + quantum + "]";
     }
 }

@@ -21,7 +21,6 @@ import javax.swing.Timer;
 import nucleo.Computador;
 import simulacion.LogEventos;
 import simulacion.Simulador;
-import sincronizacion.Buffer;
 
 /**
  * Vista 2 de ÁvilaOS: ventana de monitoreo de la simulación.
@@ -44,10 +43,12 @@ public class VentanaEstado extends JFrame {
 
     private final Simulador simulador;
     private final PanelComputador[] paneles;
+    private final PanelExploradorArchivos panelArchivos;
     private final Timer temporizador;
 
     private final JLabel lblCiclo = new JLabel("Ciclo: 0");
     private final JLabel lblEstado = new JLabel();
+    private final JLabel lblResumenDisco = new JLabel("Disco: —");
     private final JLabel lblDuracion = new JLabel();
     private final JButton btnIniciar = new JButton("Iniciar");
     private final JButton btnPausa = new JButton("Pausar");
@@ -55,18 +56,22 @@ public class VentanaEstado extends JFrame {
     private final JButton btnReiniciar = new JButton("Reiniciar");
     private final JButton btnCrear = new JButton("Crear proceso…");
     private VentanaCrearProceso ventanaCrear;
-    private final JButton btnCrearBuffer = new JButton("Crear buffer");
     private final JButton btnGrafica = new JButton("Gráfica CPU");
     private VentanaGrafica ventanaGrafica;
+    private final JButton btnGraficaDisco = new JButton("Gráfica disco");
+    private VentanaGraficaDisco ventanaGraficaDisco;
     private final JButton btnMetricas = new JButton("Métricas");
     private VentanaMetricas ventanaMetricas;
-    private final JButton btnConfiguracion = new JButton("Configuración…");
+    private final JButton btnDisco = new JButton("Disco");
+    private VentanaDisco ventanaDisco;
+    private final JButton btnConfiguracion = new JButton("Cargar JSON / Config…");
     private final JSlider deslizador;
     private final javax.swing.JTextArea areaLog = new javax.swing.JTextArea(6, 80);
     private final javax.swing.JScrollPane scrollLog = new javax.swing.JScrollPane(areaLog);
 
     private boolean iniciada;
     private boolean detenida;
+    private boolean ajustandoDeslizador;
 
     /**
      * @param simulador simulador ya configurado (con sus computadores registrados).
@@ -77,7 +82,7 @@ public class VentanaEstado extends JFrame {
         // En la interfaz gráfica se mantiene el reloj activo en ocioso para que no se congele
         this.simulador.setMantenerRelojActivo(true);
 
-        // Un panel por computador.
+        // Un panel por computador (en el Proyecto 2 se usa una sola instancia).
         paneles = new PanelComputador[simulador.getCantidadComputadores()];
         JPanel centro = new JPanel(new GridLayout(1, Math.max(1, paneles.length), 8, 8));
         Iterador<Computador> it = simulador.iteradorComputadores();
@@ -110,15 +115,18 @@ public class VentanaEstado extends JFrame {
         fila1.add(btnReiniciar);
         fila1.add(new javax.swing.JSeparator(javax.swing.SwingConstants.VERTICAL));
         fila1.add(btnCrear);
-        fila1.add(btnCrearBuffer);
         fila1.add(btnGrafica);
+        fila1.add(btnGraficaDisco);
         fila1.add(btnMetricas);
+        fila1.add(btnDisco);
         fila1.add(btnConfiguracion);
 
         // Fila 2: Indicadores de estado y control de velocidad/duración
         JPanel fila2 = new JPanel(new FlowLayout(FlowLayout.LEFT, 12, 2));
         fila2.add(lblCiclo);
         fila2.add(lblEstado);
+        fila2.add(new javax.swing.JSeparator(javax.swing.SwingConstants.VERTICAL));
+        fila2.add(lblResumenDisco);
         fila2.add(new javax.swing.JSeparator(javax.swing.SwingConstants.VERTICAL));
         fila2.add(new JLabel("Duración del ciclo:"));
         fila2.add(deslizador);
@@ -132,9 +140,10 @@ public class VentanaEstado extends JFrame {
         btnDetener.addActionListener(e -> detener());
         btnReiniciar.addActionListener(e -> reiniciar());
         btnCrear.addActionListener(e -> abrirCrearProceso());
-        btnCrearBuffer.addActionListener(e -> crearBuffer());
         btnGrafica.addActionListener(e -> abrirGrafica());
+        btnGraficaDisco.addActionListener(e -> abrirGraficaDisco());
         btnMetricas.addActionListener(e -> abrirMetricas());
+        btnDisco.addActionListener(e -> abrirDisco());
         btnConfiguracion.addActionListener(e -> abrirConfiguracion());
 
         areaLog.setEditable(false);
@@ -146,7 +155,15 @@ public class VentanaEstado extends JFrame {
 
         setLayout(new BorderLayout(6, 6));
         add(barra, BorderLayout.NORTH);
-        add(new JScrollPane(centro), BorderLayout.CENTER);
+        panelArchivos = new PanelExploradorArchivos(simulador);
+        panelArchivos.setEscuchaCambioModo(this::aplicarPermisosModoUsuario);
+        javax.swing.JSplitPane splitCentral = new javax.swing.JSplitPane(
+                javax.swing.JSplitPane.HORIZONTAL_SPLIT,
+                new JScrollPane(centro),
+                panelArchivos);
+        splitCentral.setResizeWeight(0.46);
+        splitCentral.setOneTouchExpandable(true);
+        add(splitCentral, BorderLayout.CENTER);
         add(inferior, BorderLayout.SOUTH);
 
         setDefaultCloseOperation(DO_NOTHING_ON_CLOSE);
@@ -161,12 +178,21 @@ public class VentanaEstado extends JFrame {
         aplicarDuracion();
         refrescar();
         temporizador.start();
-        setSize(Math.max(700, 420 * Math.max(1, paneles.length)), 640);
+        setSize(Math.max(960, 420 * Math.max(1, paneles.length)), 700);
         setLocationRelativeTo(null);
+        setExtendedState(JFrame.MAXIMIZED_BOTH);
     }
 
     private void iniciar() {
         if (iniciada) {
+            return;
+        }
+        if (simulador.isRequiereCargaJsonObligatoria() && !simulador.tieneAmbosJsonCargados()) {
+            mostrarMensajeAlFrente(this,
+                    "Debe cargar obligatoriamente ambos archivos JSON (Sistema de Archivos y Procesos/Configuración)\n"
+                    + "antes de iniciar el reloj global de ÁvilaOS.",
+                    "Carga de JSON obligatoria", JOptionPane.WARNING_MESSAGE);
+            abrirConfiguracion();
             return;
         }
         iniciada = true;
@@ -189,7 +215,18 @@ public class VentanaEstado extends JFrame {
             ventanaGrafica = new VentanaGrafica(this, simulador);
         }
         ventanaGrafica.setVisible(true);
+        ventanaGrafica.refrescar();
         ventanaGrafica.toFront();
+    }
+
+    /** Abre la gráfica del desplazamiento acumulado del cabezal; reutiliza la misma ventana. */
+    private void abrirGraficaDisco() {
+        if (ventanaGraficaDisco == null) {
+            ventanaGraficaDisco = new VentanaGraficaDisco(this, simulador);
+        }
+        ventanaGraficaDisco.setVisible(true);
+        ventanaGraficaDisco.refrescar();
+        ventanaGraficaDisco.toFront();
     }
 
     /** Abre (o trae al frente) la ventana de métricas de rendimiento. */
@@ -198,100 +235,39 @@ public class VentanaEstado extends JFrame {
             ventanaMetricas = new VentanaMetricas(this, simulador);
         }
         ventanaMetricas.setVisible(true);
+        ventanaMetricas.refrescar();
         ventanaMetricas.toFront();
+    }
+
+    /** Abre (o trae al frente) la vista del disco y su planificación de E/S. */
+    private void abrirDisco() {
+        if (ventanaDisco == null) {
+            ventanaDisco = new VentanaDisco(this, simulador);
+        }
+        ventanaDisco.setModoUsuario(panelArchivos.getModoSeleccionado());
+        ventanaDisco.setVisible(true);
+        ventanaDisco.refrescar();
+        ventanaDisco.toFront();
+    }
+
+    private void aplicarPermisosModoUsuario() {
+        enums.ModoUsuario modo = panelArchivos.getModoSeleccionado();
+        for (PanelComputador panel : paneles) {
+            panel.setModoUsuario(modo);
+        }
+        if (ventanaDisco != null) {
+            ventanaDisco.setModoUsuario(modo);
+        }
+        if (!modo.esAdministrador() && ventanaCrear != null && ventanaCrear.isVisible()) {
+            ventanaCrear.setVisible(false);
+        }
+        refrescar();
     }
 
     /** Abre la ventana de configuración y persistencia. */
     private void abrirConfiguracion() {
         VentanaConfiguracion vc = new VentanaConfiguracion(this, simulador);
         vc.setVisible(true);
-    }
-
-    private void crearBuffer() {
-        JPanel panel = new JPanel(new java.awt.GridLayout(0, 2, 4, 4));
-        JComboBox<Computador> comboComp = new JComboBox<>();
-        Iterador<Computador> it = simulador.iteradorComputadores();
-        while (it.haySiguiente()) {
-            comboComp.addItem(it.siguiente());
-        }
-        comboComp.setRenderer(new javax.swing.DefaultListCellRenderer() {
-            @Override
-            public java.awt.Component getListCellRendererComponent(javax.swing.JList<?> lista, Object valor, int i,
-                                                                  boolean sel, boolean foco) {
-                Object texto = valor instanceof Computador c
-                        ? c.getNombre() + " (RAM " + c.getMemoriaTotal() + " KB)" : valor;
-                return super.getListCellRendererComponent(lista, texto, i, sel, foco);
-            }
-        });
-
-        int nBuf = 1;
-        while (simulador.buscarBuffer("B" + nBuf) != null || simulador.buscarBuffer("BUF-" + nBuf) != null) {
-            nBuf++;
-        }
-        JTextField txtId = new JTextField("B" + nBuf);
-        JTextField txtCap = new JTextField("5");
-        JTextField txtTam = new JTextField("4");
-        panel.add(new JLabel("ID del buffer:"));
-        panel.add(txtId);
-        panel.add(new JLabel("Capacidad:"));
-        panel.add(txtCap);
-        panel.add(new JLabel("Tamaño elemento (KB):"));
-        panel.add(txtTam);
-        panel.add(new JLabel("Computador anfitrión:"));
-        panel.add(comboComp);
-        int res = JOptionPane.showConfirmDialog(this, panel, "Crear buffer acotado", JOptionPane.OK_CANCEL_OPTION);
-        if (res != JOptionPane.OK_OPTION) {
-            return;
-        }
-        try {
-            String id = txtId.getText().trim();
-            if (id.isEmpty()) {
-                JOptionPane.showMessageDialog(this, "Debe ingresar un ID para el buffer.", "Error", JOptionPane.ERROR_MESSAGE);
-                return;
-            }
-            if (simulador.buscarBuffer(id) != null) {
-                JOptionPane.showMessageDialog(this, "Ya existe un buffer con el ID " + id + ".", "Error", JOptionPane.ERROR_MESSAGE);
-                return;
-            }
-            String capStr = txtCap.getText().trim();
-            String tamStr = txtTam.getText().trim();
-            int cap;
-            long tam;
-            try {
-                cap = Integer.parseInt(capStr);
-            } catch (NumberFormatException ex) {
-                JOptionPane.showMessageDialog(this, "La capacidad debe ser un valor numérico entero.", "Error", JOptionPane.ERROR_MESSAGE);
-                return;
-            }
-            try {
-                tam = Long.parseLong(tamStr);
-            } catch (NumberFormatException ex) {
-                JOptionPane.showMessageDialog(this, "El tamaño del elemento debe ser un valor numérico.", "Error", JOptionPane.ERROR_MESSAGE);
-                return;
-            }
-            if (cap <= 0) {
-                JOptionPane.showMessageDialog(this, "La capacidad debe ser mayor que cero.", "Error", JOptionPane.ERROR_MESSAGE);
-                return;
-            }
-            if (tam <= 0) {
-                JOptionPane.showMessageDialog(this, "El tamaño del elemento debe ser mayor que cero.", "Error", JOptionPane.ERROR_MESSAGE);
-                return;
-            }
-            Computador anfitrion = (Computador) comboComp.getSelectedItem();
-            if (anfitrion == null) {
-                JOptionPane.showMessageDialog(this, "Debe seleccionar un computador anfitrión.", "Error", JOptionPane.ERROR_MESSAGE);
-                return;
-            }
-            Buffer b = new Buffer(id, cap, anfitrion.getId(), tam, anfitrion);
-            simulador.registrarBuffer(b);
-            JOptionPane.showMessageDialog(this, "Buffer " + id + " creado correctamente en " + anfitrion.getNombre(), "OK", JOptionPane.INFORMATION_MESSAGE);
-            if (ventanaCrear != null) {
-                ventanaCrear.actualizarBuffers();
-            }
-            refrescar();
-        } catch (Exception ex) {
-            JOptionPane.showMessageDialog(this, "Error al crear buffer: " + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
-        }
     }
 
     private void pausarOReanudar() {
@@ -316,28 +292,38 @@ public class VentanaEstado extends JFrame {
     }
 
     private void reiniciar() {
-        int confirm = JOptionPane.showConfirmDialog(this,
+        int confirm = mostrarConfirmacionAlFrente(this,
                 "¿Desea reiniciar la simulación al escenario inicial?",
                 "Reiniciar Simulación",
-                JOptionPane.YES_NO_OPTION);
+                JOptionPane.YES_NO_OPTION, JOptionPane.QUESTION_MESSAGE);
         if (confirm != JOptionPane.YES_OPTION) {
             return;
         }
         temporizador.stop();
         cerrarVentanasHijas();
         simulador.detener();
+        modelo.PCB.reiniciarGeneradorId();
+        disco.SolicitudES.reiniciarGeneradorId();
         dispose();
         SwingUtilities.invokeLater(() -> {
-            Simulador nuevo = config.EscenarioDemo.crear();
+            Simulador nuevo = com.mycompany.proyecto1sosimulador.Proyecto1SOsimulador.crearSimuladorPendienteDeJson();
             VentanaEstado nuevaVentana = new VentanaEstado(nuevo);
             nuevaVentana.setVisible(true);
         });
     }
 
     private void cerrarVentanasHijas() {
+        if (ventanaDisco != null) {
+            ventanaDisco.dispose();
+            ventanaDisco = null;
+        }
         if (ventanaGrafica != null) {
             ventanaGrafica.dispose();
             ventanaGrafica = null;
+        }
+        if (ventanaGraficaDisco != null) {
+            ventanaGraficaDisco.dispose();
+            ventanaGraficaDisco = null;
         }
         if (ventanaMetricas != null) {
             ventanaMetricas.dispose();
@@ -350,8 +336,18 @@ public class VentanaEstado extends JFrame {
     }
 
     private void aplicarDuracion() {
+        if (ajustandoDeslizador) {
+            return;
+        }
         simulador.setDuracionCicloMs(deslizador.getValue());
         lblDuracion.setText(deslizador.getValue() + " ms");
+        if (!deslizador.getValueIsAdjusting() && ventanaDisco != null && ventanaDisco.isVisible()) {
+            SwingUtilities.invokeLater(() -> {
+                if (ventanaDisco != null && ventanaDisco.isVisible()) {
+                    ventanaDisco.toFront();
+                }
+            });
+        }
     }
 
     private void cerrar() {
@@ -361,15 +357,88 @@ public class VentanaEstado extends JFrame {
         dispose();
     }
 
-    /** Lee el estado de forma segura y actualiza todos los paneles. */
+    /**
+     * Muestra un diálogo de confirmación modal siempre al frente (evita que en macOS
+     * quede oculto detrás de diálogos flotantes como {@link VentanaDisco}).
+     */
+    static int mostrarConfirmacionAlFrente(java.awt.Component padre, Object mensaje, String titulo,
+                                           int tipoOpcion, int tipoMensaje) {
+        JOptionPane pane = new JOptionPane(mensaje, tipoMensaje, tipoOpcion);
+        javax.swing.JDialog d = pane.createDialog(padre, titulo);
+        d.setAlwaysOnTop(true);
+        d.setVisible(true);
+        d.dispose();
+        Object val = pane.getValue();
+        return (val instanceof Integer i) ? i : JOptionPane.CLOSED_OPTION;
+    }
+
+    static void mostrarMensajeAlFrente(java.awt.Component padre, Object mensaje, String titulo, int tipoMensaje) {
+        JOptionPane pane = new JOptionPane(mensaje, tipoMensaje);
+        javax.swing.JDialog d = pane.createDialog(padre, titulo);
+        d.setAlwaysOnTop(true);
+        d.setVisible(true);
+        d.dispose();
+    }
+
+    static String mostrarEntradaAlFrente(java.awt.Component padre, Object mensaje, String valorInicial) {
+        JOptionPane pane = new JOptionPane(mensaje, JOptionPane.QUESTION_MESSAGE, JOptionPane.OK_CANCEL_OPTION);
+        pane.setWantsInput(true);
+        pane.setInitialSelectionValue(valorInicial);
+        javax.swing.JDialog d = pane.createDialog(padre, "Entrada");
+        d.setAlwaysOnTop(true);
+        d.setVisible(true);
+        d.dispose();
+        Object btn = pane.getValue();
+        if (!(btn instanceof Integer i) || i != JOptionPane.OK_OPTION) {
+            return null;
+        }
+        Object val = pane.getInputValue();
+        return (val == JOptionPane.UNINITIALIZED_VALUE || val == null) ? null : val.toString();
+    }
+
+    /**
+     * Cierra la ventana actual y abre una nueva {@link VentanaEstado} enlazada
+     * al {@code nuevoSimulador} construido tras cargar los JSON obligatorios.
+     */
+    public void cerrarYReemplazar(Simulador nuevoSimulador) {
+        temporizador.stop();
+        cerrarVentanasHijas();
+        simulador.detener();
+        dispose();
+        SwingUtilities.invokeLater(() -> new VentanaEstado(nuevoSimulador).setVisible(true));
+    }
+
+    /** Lee el estado de forma segura mediante snapshots y actualiza Swing fuera de {@code mutexEstado}. */
     private void refrescar() {
         final StringBuilder logSb = new StringBuilder();
         final long[] cicloActual = new long[1];
+        final boolean[] hayTrabajo = new boolean[1];
+        final boolean[] faltaJson = new boolean[1];
+        final boolean[] limiteAlcanzado = new boolean[1];
+        final boolean[] pausada = new boolean[1];
+        final String[] resumenDisco = new String[1];
+        final PanelComputador.Snapshot[] snapshotsPc = new PanelComputador.Snapshot[paneles.length];
+        final PanelExploradorArchivos.Snapshot[] snapshotArchivos = new PanelExploradorArchivos.Snapshot[1];
+
         simulador.leerEstado(() -> {
             cicloActual[0] = simulador.getCicloActual();
-            for (PanelComputador panel : paneles) {
-                panel.actualizar();
+            hayTrabajo[0] = simulador.hayTrabajoPendiente();
+            faltaJson[0] = simulador.isRequiereCargaJsonObligatoria() && !simulador.tieneAmbosJsonCargados();
+            limiteAlcanzado[0] = simulador.isLimiteAlcanzado();
+            pausada[0] = simulador.estaPausada();
+            disco.DiscoSimulado d = simulador.getDisco();
+            if (d == null) {
+                resumenDisco[0] = "Disco: sin configurar";
+            } else {
+                resumenDisco[0] = "Disco: " + d.getPoliticaActual().getCodigoJson()
+                        + " | Cabezal: " + d.getPosicionCabezal()
+                        + (d.isDireccionAscendente() ? " ↑" : " ↓")
+                        + " | Cola E/S: " + d.getCantidadEnColaES();
             }
+            for (int i = 0; i < paneles.length; i++) {
+                snapshotsPc[i] = paneles[i].capturarSnapshot();
+            }
+            snapshotArchivos[0] = panelArchivos.capturarSnapshot();
             LogEventos log = simulador.getLogEventos();
             if (log != null) {
                 estructuras.ListaEnlazada<LogEventos.Evento> ultimos = log.getUltimos(200);
@@ -380,16 +449,40 @@ public class VentanaEstado extends JFrame {
             }
         });
 
-        SwingUtilities.invokeLater(() -> {
+        Runnable aplicarEnEdt = () -> {
+            for (int i = 0; i < paneles.length; i++) {
+                paneles[i].aplicarSnapshot(snapshotsPc[i]);
+            }
+            panelArchivos.setOperacionesHabilitadas(!detenida && !limiteAlcanzado[0] && !faltaJson[0]);
+            panelArchivos.aplicarSnapshot(snapshotArchivos[0]);
+
             lblCiclo.setText("Ciclo: " + cicloActual[0]);
-            lblEstado.setText("Estado: " + textoEstado());
-            btnIniciar.setEnabled(!iniciada && !detenida);
-            btnPausa.setEnabled(iniciada && !detenida && !simulador.isLimiteAlcanzado());
-            btnPausa.setText(simulador.estaPausada() ? "Reanudar" : "Pausar");
+            lblEstado.setText("Estado: " + textoEstado(hayTrabajo[0]));
+            lblResumenDisco.setText(resumenDisco[0]);
+            int durSim = (int) Math.max(DURACION_MINIMA_MS, Math.min(simulador.getDuracionCicloMs(), DURACION_MAXIMA_MS));
+            if (!deslizador.getValueIsAdjusting() && deslizador.getValue() != durSim) {
+                ajustandoDeslizador = true;
+                try {
+                    deslizador.setValue(durSim);
+                    lblDuracion.setText(durSim + " ms");
+                } finally {
+                    ajustandoDeslizador = false;
+                }
+            }
+            boolean esAdmin = panelArchivos.getModoSeleccionado().esAdministrador();
+            btnIniciar.setEnabled(!iniciada && !detenida && !faltaJson[0]);
+            btnPausa.setEnabled(iniciada && !detenida && !limiteAlcanzado[0]);
+            btnPausa.setText(pausada[0] ? "Reanudar" : "Pausar");
             btnDetener.setEnabled(iniciada && !detenida);
             btnReiniciar.setEnabled(true);
-            btnCrear.setEnabled(!detenida && !simulador.isLimiteAlcanzado());
-            btnCrearBuffer.setEnabled(!detenida && !simulador.isLimiteAlcanzado());
+            btnCrear.setEnabled(!detenida && !limiteAlcanzado[0] && !faltaJson[0] && esAdmin);
+            btnCrear.setToolTipText(esAdmin
+                    ? "Crear un nuevo proceso manual"
+                    : "Gestionar procesos solo está permitido en Modo Administrador");
+            btnConfiguracion.setEnabled(esAdmin || faltaJson[0]);
+            btnConfiguracion.setToolTipText((esAdmin || faltaJson[0])
+                    ? "Configuración y carga de JSON"
+                    : "Cambiar configuración y políticas solo está permitido en Modo Administrador");
 
             if (logSb.length() > 0) {
                 String nuevoTexto = logSb.toString();
@@ -407,7 +500,13 @@ public class VentanaEstado extends JFrame {
                     }
                 }
             }
-        });
+        };
+
+        if (SwingUtilities.isEventDispatchThread()) {
+            aplicarEnEdt.run();
+        } else {
+            SwingUtilities.invokeLater(aplicarEnEdt);
+        }
     }
 
     /**
@@ -431,11 +530,14 @@ public class VentanaEstado extends JFrame {
         });
     }
 
-    private String textoEstado() {
+    private String textoEstado(boolean hayTrabajo) {
         if (detenida) {
             return "detenida (haga clic en Reiniciar para comenzar de nuevo)";
         }
         if (!iniciada) {
+            if (simulador.isRequiereCargaJsonObligatoria() && !simulador.tieneAmbosJsonCargados()) {
+                return "pendiente cargar ambos JSON obligatorios";
+            }
             return "sin iniciar";
         }
         if (simulador.estaPausada()) {
@@ -444,7 +546,7 @@ public class VentanaEstado extends JFrame {
         if (simulador.isLimiteAlcanzado()) {
             return "límite de ciclos alcanzado (detenida)";
         }
-        if (!simulador.hayTrabajoPendiente()) {
+        if (!hayTrabajo) {
             return "finalizada / ociosa (esperando nuevos procesos)";
         }
         return "en marcha";

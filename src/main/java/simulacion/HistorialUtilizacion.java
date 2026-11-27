@@ -18,20 +18,30 @@ import nucleo.Computador;
  */
 public class HistorialUtilizacion {
 
-    /** Datos de un computador: un booleano por ciclo, desde el primero en que se registró. */
+    /** Datos de un computador: estado ciclo a ciclo desde el primero en que se registró. */
     private static final class Serie {
         private final int idComputador;
         private final String nombre;
         private final long cicloInicial;
         private final ListaEnlazada<Boolean> ocupada = new ListaEnlazada<>();
+        private final ListaEnlazada<Boolean> enKernel = new ListaEnlazada<>();
         private long acumuladoAnterior;
+        private long acumuladoKernelAnterior;
         private long ciclosOcupados;
+        private long ciclosUsuario;
+        private long ciclosKernel;
 
         private Serie(int idComputador, String nombre, long cicloInicial) {
             this.idComputador = idComputador;
             this.nombre = nombre;
             this.cicloInicial = cicloInicial;
         }
+    }
+
+    private enum FiltroSerie {
+        TOTAL,
+        USUARIO,
+        KERNEL
     }
 
     private final ListaEnlazada<Serie> series = new ListaEnlazada<>();
@@ -53,11 +63,20 @@ public class HistorialUtilizacion {
                 series.agregar(s);
             }
             long acumulado = c.getCpu().getCiclosEjecutados();
+            long acumKernel = c.getCpu().getCiclosKernel();
             boolean estuvoOcupada = acumulado > s.acumuladoAnterior;
+            boolean fueKernel = estuvoOcupada && (acumKernel > s.acumuladoKernelAnterior);
             s.acumuladoAnterior = acumulado;
+            s.acumuladoKernelAnterior = acumKernel;
             s.ocupada.agregar(estuvoOcupada);
+            s.enKernel.agregar(fueKernel);
             if (estuvoOcupada) {
                 s.ciclosOcupados++;
+                if (fueKernel) {
+                    s.ciclosKernel++;
+                } else {
+                    s.ciclosUsuario++;
+                }
             }
         }
     }
@@ -84,6 +103,32 @@ public class HistorialUtilizacion {
         return n == 0 ? 0.0 : 100.0 * s.ciclosOcupados / n;
     }
 
+    /** Porcentaje de ciclos totales en modo usuario (0 a 100). */
+    public double getUtilizacionUsuario(int indice) {
+        Serie s = serie(indice);
+        int n = s.ocupada.getTamano();
+        return n == 0 ? 0.0 : 100.0 * s.ciclosUsuario / n;
+    }
+
+    /** Porcentaje de ciclos totales en modo kernel / E/S (0 a 100). */
+    public double getUtilizacionKernel(int indice) {
+        Serie s = serie(indice);
+        int n = s.ocupada.getTamano();
+        return n == 0 ? 0.0 : 100.0 * s.ciclosKernel / n;
+    }
+
+    public long getCiclosOcupados(int indice) {
+        return serie(indice).ciclosOcupados;
+    }
+
+    public long getCiclosUsuario(int indice) {
+        return serie(indice).ciclosUsuario;
+    }
+
+    public long getCiclosKernel(int indice) {
+        return serie(indice).ciclosKernel;
+    }
+
     /**
      * Serie para graficar: la utilización como promedio móvil de los últimos
      * {@code ventana} ciclos (menos al principio, mientras no hay tantos).
@@ -95,8 +140,26 @@ public class HistorialUtilizacion {
      * @return arreglo {@code [2][n]}: fila 0 = número de ciclo, fila 1 = utilización en % (0 a 100).
      */
     public double[][] utilizacion(int indice, int ventana, int maxPuntos) {
-        if (ventana < 1 || maxPuntos < 2) {
-            throw new IllegalArgumentException("La ventana debe ser >= 1 y maxPuntos >= 2.");
+        return calcularVentana(serie(indice), FiltroSerie.TOTAL, ventana, maxPuntos);
+    }
+
+    /** Promedio móvil solo para ejecución en modo Usuario. */
+    public double[][] utilizacionUsuario(int indice, int ventana, int maxPuntos) {
+        return calcularVentana(serie(indice), FiltroSerie.USUARIO, ventana, maxPuntos);
+    }
+
+    /** Promedio móvil solo para ejecución en modo Kernel / E/S. */
+    public double[][] utilizacionKernel(int indice, int ventana, int maxPuntos) {
+        return calcularVentana(serie(indice), FiltroSerie.KERNEL, ventana, maxPuntos);
+    }
+
+    /**
+     * Serie continua de utilización acumulada real desde el inicio hasta cada ciclo
+     * ({@code 100 * ciclosOcupadosHastaT / ciclosTranscurridosHastaT}).
+     */
+    public double[][] utilizacionAcumulada(int indice, int maxPuntos) {
+        if (maxPuntos < 2) {
+            throw new IllegalArgumentException("maxPuntos debe ser >= 2.");
         }
         Serie s = serie(indice);
         int total = s.ocupada.getTamano();
@@ -104,21 +167,52 @@ public class HistorialUtilizacion {
             return new double[][]{new double[0], new double[0]};
         }
         int paso = (total + maxPuntos - 1) / maxPuntos;
-        int cantidad = (total - 1) / paso + 1;
-        boolean faltaUltimo = (total - 1) % paso != 0;
-        if (faltaUltimo) {
-            cantidad++;
-        }
+        int cantidad = contarMuestras(total, paso);
         double[] x = new double[cantidad];
         double[] y = new double[cantidad];
 
-        int[] recientes = new int[ventana]; // anillo con los últimos valores (1 = ocupada)
-        int suma = 0;
+        long acum = 0;
         int salida = 0;
         int i = 0;
         Iterador<Boolean> it = s.ocupada.iterador();
         while (it.haySiguiente()) {
-            int valor = it.siguiente() ? 1 : 0;
+            if (Boolean.TRUE.equals(it.siguiente())) {
+                acum++;
+            }
+            boolean ultimo = (i == total - 1);
+            if (i % paso == 0 || ultimo) {
+                x[salida] = s.cicloInicial + i;
+                y[salida] = 100.0 * acum / (i + 1);
+                salida++;
+            }
+            i++;
+        }
+        return new double[][]{x, y};
+    }
+
+    private double[][] calcularVentana(Serie s, FiltroSerie filtro, int ventana, int maxPuntos) {
+        if (ventana < 1 || maxPuntos < 2) {
+            throw new IllegalArgumentException("La ventana debe ser >= 1 y maxPuntos >= 2.");
+        }
+        int total = s.ocupada.getTamano();
+        if (total == 0) {
+            return new double[][]{new double[0], new double[0]};
+        }
+        int paso = (total + maxPuntos - 1) / maxPuntos;
+        int cantidad = contarMuestras(total, paso);
+        double[] x = new double[cantidad];
+        double[] y = new double[cantidad];
+
+        int[] recientes = new int[ventana];
+        int suma = 0;
+        int salida = 0;
+        int i = 0;
+        Iterador<Boolean> itOcup = s.ocupada.iterador();
+        Iterador<Boolean> itKern = s.enKernel.iterador();
+        while (itOcup.haySiguiente()) {
+            boolean estaOcupada = Boolean.TRUE.equals(itOcup.siguiente());
+            boolean esKernel = Boolean.TRUE.equals(itKern.haySiguiente() ? itKern.siguiente() : Boolean.FALSE);
+            int valor = valorCiclo(estaOcupada, esKernel, filtro);
             int pos = i % ventana;
             if (i >= ventana) {
                 suma -= recientes[pos];
@@ -135,6 +229,25 @@ public class HistorialUtilizacion {
             i++;
         }
         return new double[][]{x, y};
+    }
+
+    private static int valorCiclo(boolean estaOcupada, boolean esKernel, FiltroSerie filtro) {
+        if (!estaOcupada) {
+            return 0;
+        }
+        return switch (filtro) {
+            case TOTAL -> 1;
+            case KERNEL -> esKernel ? 1 : 0;
+            case USUARIO -> esKernel ? 0 : 1;
+        };
+    }
+
+    private static int contarMuestras(int total, int paso) {
+        int cantidad = (total - 1) / paso + 1;
+        if ((total - 1) % paso != 0) {
+            cantidad++;
+        }
+        return cantidad;
     }
 
     private Serie serie(int indice) {

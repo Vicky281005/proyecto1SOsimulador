@@ -12,7 +12,8 @@ public enum MotivoBloqueo {
     SEMAFORO_LLENO("Esperando elemento (buffer vacío)"),
     MUTEX("Esperando exclusión mutua (Mutex)"),
     LATENCIA_RED("Esperando latencia de red"),
-    ESPERA_IO("Esperando operación de E/S");
+    ESPERA_IO("Esperando operación de E/S"),
+    ESPERA_DISCO("Esperando al disco (E/S de archivos)");
 
     private final String etiqueta;
 

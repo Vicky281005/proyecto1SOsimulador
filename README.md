@@ -1,17 +1,19 @@
-# ÁvilaOS — Simulador de sistema operativo distribuido
+# ÁvilaOS — Simulador de sistema operativo con sistema de archivos
 
-Proyecto 1 de Sistemas Operativos (Unimet, trimestre 2627-1).
+Proyecto 2 de Sistemas Operativos (Unimet, trimestre 2627-1): «ÁvilaOS con sistema de archivos. Planificación de disco y suspensión de procesos».
 Autoras: María Almonte y Alejandra Oporto.
 
-ÁvilaOS simula varios computadores independientes (cada uno con su CPU, su RAM y su política de planificación) que avanzan al ritmo de un reloj global y cooperan mediante semáforos y buffers acotados (productor/consumidor), incluso cuando el buffer está en otro computador (con latencia de red configurable).
+ÁvilaOS simula un computador con CPU, RAM y un disco con sistema de archivos que avanzan al ritmo de un reloj global. Los procesos hacen operaciones de E/S sobre archivos (crear, leer, actualizar, eliminar), el disco las atiende según una política de planificación configurable y, cuando falta memoria, el planificador de mediano plazo suspende procesos bloqueados al área de intercambio (swap).
 
 ## Características
-- Modelo de cinco estados: nuevo, listo, ejecución, bloqueado y terminado.
-- Políticas de planificación intercambiables en ejecución: FCFS, Round Robin (quantum configurable), Prioridades apropiativas y EDF apropiativa.
-- Semáforos propios con cola FIFO y buffers acotados con el esquema vacíos / llenos / mutex.
-- Acceso remoto a buffers con latencia de red y bloqueo del proceso.
-- Reloj global con un hilo por componente y una barrera de sincronización.
-- Configuración y persistencia en JSON y CSV, bitácora de eventos, gráfica de utilización de CPU y métricas.
+- Modelo de siete estados: nuevo, listo, ejecución, bloqueado, terminado, listo suspendido y bloqueado suspendido.
+- Planificador de mediano plazo: suspende un proceso bloqueado al swap cuando falta RAM y reactiva procesos listo suspendido cuando hay espacio.
+- Planificación de CPU intercambiable en ejecución: FCFS, Round Robin, Prioridades apropiativas y EDF apropiativa.
+- Disco simulado con cuatro políticas de planificación, intercambiables en caliente: FIFO, SSTF, SCAN y C-SCAN (1 ciclo por bloque, velocidad configurable).
+- Sistema de archivos jerárquico con dueño y permisos (público / privado); un proceso de otro usuario que intenta acceder a un archivo privado es rechazado y el hecho queda en la bitácora.
+- Explorador de archivos, mapa del disco con la posición del cabezal y gráfica del desplazamiento del cabezal.
+- Dos JSON de entrada: sistema de archivos (disco de 100 a 500 bloques) y configuración de procesos (ejemplos en `ejemplos/proyecto2/`).
+- Bitácora de eventos (incluye disco, suspensión, reactivación y rechazos de E/S) y métricas de CPU, memoria y disco.
 - Estructuras de datos propias (sin colecciones de java.util).
 
 ## Requisitos
@@ -20,20 +22,34 @@ Autoras: María Almonte y Alejandra Oporto.
 - Dependencias (las descarga Maven): jfreechart 1.5.5 y gson 2.11.0
 
 ## Cómo ejecutarlo
-1. Abrir el proyecto en NetBeans, hacer Clean and Build y ejecutar la clase com.mycompany.proyecto1sosimulador.Proyecto1SOsimulador. Se abre la interfaz gráfica con un escenario de demostración.
-2. Con el argumento --consola se ejecuta el escenario de demostración y se imprime el reporte por consola.
+1. Abrir el proyecto en NetBeans, hacer Clean and Build y ejecutar la clase `com.mycompany.proyecto1sosimulador.Proyecto1SOsimulador`.
+2. En la ventana de configuración cargar los dos JSON del enunciado (`ejemplos/proyecto2/sistema_archivos_enunciado.json` y `ejemplos/proyecto2/procesos_enunciado.json`) y pulsar «Aplicar ambos JSON y Abrir Simulación». El reloj no arranca hasta tener ambos JSON.
+3. Con el argumento `--consola` se ejecuta el escenario de demostración y se imprime el reporte por consola.
 
 ## Cómo probar
-Las pruebas son programas con main() en src/test/java. Después de compilar, desde la raíz del proyecto (reemplazar RUTA por la carpeta donde está gson-2.11.0.jar, normalmente dentro de .m2/repository/com/google/code/gson/gson/2.11.0):
+Las pruebas son programas con `main()` en `src/test/java`. Después de compilar (Clean and Build), desde la raíz del proyecto (reemplazar RUTA por la carpeta donde está gson-2.11.0.jar, normalmente dentro de `.m2/repository/com/google/code/gson/gson/2.11.0`):
 
-    java -cp "target/classes;target/test-classes;RUTA/gson-2.11.0.jar" simulacion.EscenariosSincronizacionPrueba
+    java -cp "target/classes;target/test-classes;RUTA/gson-2.11.0.jar" integracion.IntegracionProyecto2Prueba
+    java -cp "target/classes;target/test-classes;RUTA/gson-2.11.0.jar" nucleo.SuspensionSwapPrueba
+    java -cp "target/classes;target/test-classes;RUTA/gson-2.11.0.jar" nucleo.ProcesoESPrueba
+    java -cp "target/classes;target/test-classes;RUTA/gson-2.11.0.jar" nucleo.LogMetricasSuspensionPrueba
     java -cp "target/classes;target/test-classes;RUTA/gson-2.11.0.jar" config.PersistenciaPrueba
+    java -cp "target/classes;target/test-classes;RUTA/gson-2.11.0.jar" config.ValidacionDiscoPrueba
+    java -cp "target/classes;target/test-classes;RUTA/gson-2.11.0.jar" simulacion.GraficaDiscoPrueba
     java -cp "target/classes;target/test-classes;RUTA/gson-2.11.0.jar" estructuras.EscaneoColeccionesProhibidasPrueba
 
-En Linux o macOS se usa : en lugar de ; como separador del classpath. Otras pruebas disponibles: simulacion.MetricasPrueba, simulacion.SimuladorControlPrueba, simulacion.HistorialUtilizacionPrueba, hardware.RelojPrueba y gui.ValidadorProcesoPrueba.
+`IntegracionProyecto2Prueba` debe ejecutarse desde la raíz del proyecto porque lee los JSON de `ejemplos/proyecto2/`. Verifica, entre otras cosas, los desplazamientos totales del anexo del enunciado (FIFO 518, SSTF 208, SCAN 332, C-SCAN 192).
+
+En Linux o macOS se usa `:` en lugar de `;` como separador del classpath. Las pruebas `gui.VentanaDiscoPrueba`, `gui.PanelExploradorArchivosPrueba` y `gui.VentanaMetricasPrueba` necesitan entorno gráfico. Otras pruebas disponibles: simulacion.MetricasPrueba, simulacion.SimuladorControlPrueba, simulacion.HistorialUtilizacionPrueba, hardware.RelojPrueba y gui.ValidadorProcesoPrueba.
 
 ## Ejemplos
-En la carpeta ejemplos/ hay una configuración JSON de ejemplo que se puede cargar desde la ventana de configuración.
+En `ejemplos/proyecto2/` se incluyen los escenarios de entrada en formato JSON:
+- `sistema_archivos_enunciado.json` + `procesos_enunciado.json`: escenario oficial exacto del enunciado (200/200 bloques y 8 procesos).
+- `sistema_archivos_enunciado.json` + `procesos_swap.json`: demostración de suspensión/reactivación en Swap y criterio de víctima por menor prioridad (RAM 32).
+- `sistema_archivos_demo_espacio.json` + `procesos_create_swap.json`: disco con 40 bloques libres en huecos para demostrar asignación encadenada fragmentada (`CREATE` de 10 bloques), Modo Usuario (`/usuarios/user1`) y Swap.
+- `sistema_archivos.json` + `procesos_config.json`: escenario base utilizado por `IntegracionProyecto2Prueba`.
 
 ## Informe
-https://docs.google.com/document/d/1cdSB2gOKM-RMue0dC088aRc9dJCAq8c4xHOr6vEPkOU/edit?usp=sharing
+Informe del Proyecto 1: https://docs.google.com/document/d/1cdSB2gOKM-RMue0dC088aRc9dJCAq8c4xHOr6vEPkOU/edit?usp=sharing
+
+Informe del Proyecto 2: https://docs.google.com/document/d/1FdyxvBacxGL_nZE4qOoRQPHx11gwcFUSY5aRqBcSja0/edit?usp=sharing

@@ -62,7 +62,7 @@ public class ReporteSimulacion {
 
     private void agregarComputador(StringBuilder reporte, Computador computador) {
         reporte.append('\n');
-        reporte.append(String.format("%s  [%s]  RAM %d KB%n",
+        reporte.append(String.format("%s  [%s]  RAM %d bloques%n",
                 computador.getNombre(),
                 computador.getPlanificador().getPolitica().getNombre(),
                 computador.getMemoriaTotal()));

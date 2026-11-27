@@ -141,6 +141,28 @@ public class HistorialUtilizacionPrueba {
         }
         verificar(invalido, "ventana 0 lanza IllegalArgumentException");
 
+        System.out.println("6) acumulada real y desglose Usuario vs. Kernel");
+        double[][] acum = s2.getHistorialUtilizacion().utilizacionAcumulada(0, 100);
+        verificar(acum[0].length == 10, "acumulada tiene 10 puntos");
+        verificar(casi(acum[1][3], 100.0), "acumulada ciclo 4: 100 % (" + acum[1][3] + ")");
+        verificar(casi(acum[1][7], 50.0), "acumulada ciclo 8 (4 ocupados de 8): 50 % (" + acum[1][7] + ")");
+        verificar(casi(acum[1][9], 40.0), "acumulada ciclo 10 (4 ocupados de 10): 40 % (" + acum[1][9] + ")");
+
+        Simulador s5 = new Simulador();
+        s5.registrarComputador(pc(1));
+        ListaEnlazada<Instruccion> progMixto = new ListaEnlazada<>();
+        progMixto.agregar(new Instruccion(TipoInstruccion.CPU));
+        progMixto.agregar(new Instruccion(TipoInstruccion.SEM_WAIT));
+        progMixto.agregar(new Instruccion(TipoInstruccion.CPU));
+        s5.cargarProceso(new PCB("Mixto", 1, TipoProceso.IO_BOUND, 1, 10, 100_000, "", 0, 0, progMixto, 0));
+        s5.ejecutar();
+        HistorialUtilizacion h5 = s5.getHistorialUtilizacion();
+        verificar(h5.getCiclosUsuario(0) == 2, "registra 2 ciclos en modo Usuario (" + h5.getCiclosUsuario(0) + ")");
+        verificar(h5.getCiclosKernel(0) == 1, "registra 1 ciclo en modo Kernel (" + h5.getCiclosKernel(0) + ")");
+        verificar(casi(h5.getUtilizacionUsuario(0) + h5.getUtilizacionKernel(0), h5.getUtilizacionTotal(0)),
+                "Usuario + Kernel coincide exactamente con Utilización Total");
+        s5.detener();
+
         System.out.println();
         System.out.println(fallos == 0 ? "TODAS LAS PRUEBAS PASARON" : "HAY " + fallos + " PRUEBAS FALLIDAS");
         if (fallos > 0) {

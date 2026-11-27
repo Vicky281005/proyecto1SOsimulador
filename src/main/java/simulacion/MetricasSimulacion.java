@@ -1,15 +1,16 @@
 package simulacion;
 
+import disco.DiscoSimulado;
 import enums.EstadoProceso;
+import enums.PoliticaDisco;
 import estructuras.Iterador;
 import estructuras.ListaEnlazada;
 import modelo.PCB;
 import nucleo.Computador;
-import sincronizacion.Buffer;
 
 /**
  * Métricas de rendimiento de una simulación de ÁvilaOS, calculadas a partir de lo que
- * ya registran los {@link PCB}, los {@link Buffer} y las CPU.
+ * ya registran los {@link PCB}, las CPU y el disco.
  *
  * <p>Es una <b>foto</b> (snapshot): {@link #calcular(Simulador)} recorre el estado una
  * vez y devuelve un objeto inmutable. Si la simulación está corriendo, hay que llamarlo
@@ -30,8 +31,7 @@ import sincronizacion.Buffer;
  *       J = (Σx)² / (n·Σx²). Vale 1 si todos reciben la misma fracción y baja hacia
  *       1/n cuanto más desigual es el reparto.</li>
  *   <li><b>Tiempo bloqueado</b> = ciclos que el proceso estuvo en la lista de bloqueados
- *       (semáforo, mutex o latencia de red).</li>
- *   <li><b>Producidos / consumidos</b> = elementos insertados / extraídos de cada buffer.</li>
+ *       (E/S, espera de disco o de otro recurso).</li>
  * </ul>
  *
  * <p>Los valores que no se pueden calcular todavía (por ejemplo, el % de deadlines sin
@@ -55,10 +55,15 @@ public final class MetricasSimulacion {
         public final double respuestaPromedio;
         public final double bloqueadoPromedio;
         public final double usoCpuPorcentaje;
+        public final int suspensiones;
+        public final int reactivaciones;
+        public final int listosSuspendidos;
+        public final int bloqueadosSuspendidos;
 
         PorComputador(String nombre, String politica, int procesos, int completados, int terminadosPorDeadline,
                       int deadlinesCumplidos, int terminados, double throughput, double respuestaPromedio,
-                      double bloqueadoPromedio, double usoCpuPorcentaje) {
+                      double bloqueadoPromedio, double usoCpuPorcentaje,
+                      int suspensiones, int reactivaciones, int listosSuspendidos, int bloqueadosSuspendidos) {
             this.nombre = nombre;
             this.politica = politica;
             this.procesos = procesos;
@@ -70,25 +75,10 @@ public final class MetricasSimulacion {
             this.respuestaPromedio = respuestaPromedio;
             this.bloqueadoPromedio = bloqueadoPromedio;
             this.usoCpuPorcentaje = usoCpuPorcentaje;
-        }
-    }
-
-    /** Métricas de un buffer. */
-    public static final class PorBuffer {
-        public final String id;
-        public final int idAnfitrion;
-        public final int capacidad;
-        public final int ocupacion;
-        public final long producidos;
-        public final long consumidos;
-
-        PorBuffer(String id, int idAnfitrion, int capacidad, int ocupacion, long producidos, long consumidos) {
-            this.id = id;
-            this.idAnfitrion = idAnfitrion;
-            this.capacidad = capacidad;
-            this.ocupacion = ocupacion;
-            this.producidos = producidos;
-            this.consumidos = consumidos;
+            this.suspensiones = suspensiones;
+            this.reactivaciones = reactivaciones;
+            this.listosSuspendidos = listosSuspendidos;
+            this.bloqueadosSuspendidos = bloqueadosSuspendidos;
         }
     }
 
@@ -99,18 +89,57 @@ public final class MetricasSimulacion {
     private final int terminadosPorDeadline;
     private final int deadlinesCumplidos;
     private final int bloqueadosAhora;
+    private final int suspendidosAhora;
+    private final int totalSuspensiones;
+    private final int totalReactivaciones;
     private final double throughput;
     private final double respuestaPromedio;
     private final double bloqueadoPromedio;
     private final long bloqueadoMaximo;
     private final double equidad;
     private final PorComputador[] computadores;
-    private final PorBuffer[] buffers;
+    private final MetricasDisco disco;
+
+    /** Foto de las estadísticas del disco simulado (o "sin disco" si el simulador no tiene uno). */
+    public static final class MetricasDisco {
+        public final boolean hayDisco;
+        public final PoliticaDisco politica;
+        public final long desplazamientoTotal;
+        public final long solicitudesAtendidas;
+        public final double esperaPromedio;
+        /** Solicitudes atendidas por cada política, en el orden de {@link PoliticaDisco#values()}. */
+        public final long[] porPolitica;
+
+        MetricasDisco(boolean hayDisco, PoliticaDisco politica, long desplazamientoTotal,
+                      long solicitudesAtendidas, double esperaPromedio, long[] porPolitica) {
+            this.hayDisco = hayDisco;
+            this.politica = politica;
+            this.desplazamientoTotal = desplazamientoTotal;
+            this.solicitudesAtendidas = solicitudesAtendidas;
+            this.esperaPromedio = esperaPromedio;
+            this.porPolitica = porPolitica;
+        }
+
+        static MetricasDisco de(DiscoSimulado d) {
+            long[] pp = new long[PoliticaDisco.values().length];
+            if (d == null) {
+                return new MetricasDisco(false, null, 0, 0, 0.0, pp);
+            }
+            for (PoliticaDisco p : PoliticaDisco.values()) {
+                pp[p.ordinal()] = d.getSolicitudesAtendidas(p);
+            }
+            return new MetricasDisco(true, d.getPoliticaActual(), d.getDesplazamientoTotal(),
+                    d.getTotalSolicitudesAtendidas(), d.getTiempoEsperaPromedio(), pp);
+        }
+    }
 
     private MetricasSimulacion(long ciclos, int procesos, int terminados, int completados, int terminadosPorDeadline,
-                               int deadlinesCumplidos, int bloqueadosAhora, double throughput,
+                               int deadlinesCumplidos, int bloqueadosAhora, int suspendidosAhora,
+                               int totalSuspensiones, int totalReactivaciones, double throughput,
                                double respuestaPromedio, double bloqueadoPromedio, long bloqueadoMaximo,
-                               double equidad, PorComputador[] computadores, PorBuffer[] buffers) {
+                               double equidad, PorComputador[] computadores,
+                               MetricasDisco disco) {
+        this.disco = disco;
         this.ciclos = ciclos;
         this.procesos = procesos;
         this.terminados = terminados;
@@ -118,13 +147,15 @@ public final class MetricasSimulacion {
         this.terminadosPorDeadline = terminadosPorDeadline;
         this.deadlinesCumplidos = deadlinesCumplidos;
         this.bloqueadosAhora = bloqueadosAhora;
+        this.suspendidosAhora = suspendidosAhora;
+        this.totalSuspensiones = totalSuspensiones;
+        this.totalReactivaciones = totalReactivaciones;
         this.throughput = throughput;
         this.respuestaPromedio = respuestaPromedio;
         this.bloqueadoPromedio = bloqueadoPromedio;
         this.bloqueadoMaximo = bloqueadoMaximo;
         this.equidad = equidad;
         this.computadores = computadores;
-        this.buffers = buffers;
     }
 
     // ------------------------------------------------------------------ cálculo
@@ -144,11 +175,16 @@ public final class MetricasSimulacion {
         PorComputador[] porPc = new PorComputador[simulador.getCantidadComputadores()];
         ListaEnlazada<PCB> todos = new ListaEnlazada<>();
         int k = 0;
+        int totalSuspensiones = 0;
+        int totalReactivaciones = 0;
         Iterador<Computador> itPc = simulador.iteradorComputadores();
         while (itPc.haySiguiente()) {
             Computador pc = itPc.siguiente();
             ListaEnlazada<PCB> deEste = procesosDe(pc);
-            porPc[k++] = resumirComputador(pc, deEste, ciclos);
+            porPc[k] = resumirComputador(pc, deEste, ciclos);
+            totalSuspensiones += porPc[k].suspensiones;
+            totalReactivaciones += porPc[k].reactivaciones;
+            k++;
             Iterador<PCB> it = deEste.iterador();
             while (it.haySiguiente()) {
                 todos.agregar(it.siguiente());
@@ -160,6 +196,7 @@ public final class MetricasSimulacion {
         int porDeadline = 0;
         int cumplidos = 0;
         int bloqueadosAhora = 0;
+        int suspendidosAhora = 0;
         long sumaRespuesta = 0;
         int conRespuesta = 0;
         long sumaBloqueado = 0;
@@ -185,6 +222,9 @@ public final class MetricasSimulacion {
             if (p.getEstado() == EstadoProceso.BLOQUEADO) {
                 bloqueadosAhora++;
             }
+            if (p.getEstado().estaSuspendido()) {
+                suspendidosAhora++;
+            }
             if (p.getCicloInicio() >= 0) {
                 sumaRespuesta += p.getCicloInicio() - p.getCicloCreacion();
                 conRespuesta++;
@@ -206,29 +246,13 @@ public final class MetricasSimulacion {
         double bloqueado = total > 0 ? (double) sumaBloqueado / total : NO_DISPONIBLE;
         double equidad = nEquidad == 0 ? NO_DISPONIBLE : (sumaX2 == 0 ? 1.0 : (sumaX * sumaX) / (nEquidad * sumaX2));
 
-        PorBuffer[] porBuffer = new PorBuffer[contar(simulador.iteradorBuffers())];
-        int b = 0;
-        Iterador<Buffer> itB = simulador.iteradorBuffers();
-        while (itB.haySiguiente()) {
-            Buffer buf = itB.siguiente();
-            porBuffer[b++] = new PorBuffer(buf.getId(), buf.getIdComputadorAnfitrion(), buf.getCapacidad(),
-                    buf.getCantidadElementos(), buf.getTotalProducidos(), buf.getTotalConsumidos());
-        }
-
         return new MetricasSimulacion(ciclos, total, terminados, completados, porDeadline, cumplidos,
-                bloqueadosAhora, throughput, respuesta, bloqueado, maxBloqueado, equidad, porPc, porBuffer);
+                bloqueadosAhora, suspendidosAhora, totalSuspensiones, totalReactivaciones,
+                throughput, respuesta, bloqueado, maxBloqueado, equidad, porPc,
+                MetricasDisco.de(simulador.getDisco()));
     }
 
-    private static <T> int contar(Iterador<T> it) {
-        int n = 0;
-        while (it.haySiguiente()) {
-            it.siguiente();
-            n++;
-        }
-        return n;
-    }
-
-    /** Todos los procesos de un computador, sin repetir: nuevos, listos, en CPU, bloqueados y terminados. */
+    /** Todos los procesos de un computador, sin repetir: nuevos, listos, en CPU, bloqueados, suspendidos y terminados. */
     private static ListaEnlazada<PCB> procesosDe(Computador pc) {
         ListaEnlazada<PCB> lista = new ListaEnlazada<>();
         agregarTodos(lista, pc.iteradorNuevos());
@@ -238,6 +262,8 @@ public final class MetricasSimulacion {
             lista.agregar(enCpu);
         }
         agregarTodos(lista, pc.iteradorBloqueados());
+        agregarTodos(lista, pc.iteradorListosSuspendidos());
+        agregarTodos(lista, pc.iteradorBloqueadosSuspendidos());
         agregarTodos(lista, pc.iteradorTerminados());
         return lista;
     }
@@ -286,7 +312,9 @@ public final class MetricasSimulacion {
                 ciclos > 0 ? (double) completados / ciclos : 0.0,
                 conResp > 0 ? (double) sumaResp / conResp : NO_DISPONIBLE,
                 n > 0 ? (double) sumaBloq / n : NO_DISPONIBLE,
-                ciclos > 0 ? 100.0 * ocupado / ciclos : 0.0);
+                ciclos > 0 ? 100.0 * ocupado / ciclos : 0.0,
+                pc.getTotalSuspensiones(), pc.getTotalReactivaciones(),
+                pc.getCantidadListosSuspendidos(), pc.getCantidadBloqueadosSuspendidos());
     }
 
     // ------------------------------------------------------------------ acceso
@@ -317,6 +345,18 @@ public final class MetricasSimulacion {
 
     public int getDeadlinesCumplidos() {
         return deadlinesCumplidos;
+    }
+
+    public int getSuspendidosAhora() {
+        return suspendidosAhora;
+    }
+
+    public int getTotalSuspensiones() {
+        return totalSuspensiones;
+    }
+
+    public int getTotalReactivaciones() {
+        return totalReactivaciones;
     }
 
     public int getBloqueadosAhora() {
@@ -360,12 +400,9 @@ public final class MetricasSimulacion {
         return computadores[indice];
     }
 
-    public int getCantidadBuffers() {
-        return buffers.length;
-    }
-
-    public PorBuffer getBuffer(int indice) {
-        return buffers[indice];
+    /** Estadísticas del disco (nunca nulo; {@code hayDisco} indica si el simulador tiene uno). */
+    public MetricasDisco getDisco() {
+        return disco;
     }
 
     // ------------------------------------------------------------------ texto
@@ -401,17 +438,32 @@ public final class MetricasSimulacion {
                     String.format("%.0f%%", c.usoCpuPorcentaje)));
         }
 
-        sb.append("\n Por buffer:\n");
-        if (buffers.length == 0) {
-            sb.append("   (no hay buffers)\n");
-        } else {
-            sb.append(String.format("   %-12s %5s %9s %10s %10s%n", "Buffer", "PC", "Ocupación", "Producidos", "Consumidos"));
-            for (int i = 0; i < buffers.length; i++) {
-                PorBuffer b = buffers[i];
-                sb.append(String.format("   %-12s %5d %4d/%-4d %10d %10d%n", b.id, b.idAnfitrion, b.ocupacion,
-                        b.capacidad, b.producidos, b.consumidos));
-            }
+        sb.append("\n Suspensión de procesos (área swap):\n");
+        sb.append(String.format(" Total suspensiones / reactivaciones: %d / %d  (en swap ahora: %d)%n",
+                totalSuspensiones, totalReactivaciones, suspendidosAhora));
+        sb.append(String.format("   %-6s %13s %13s %12s %14s%n", "PC", "Suspensiones", "Reactivaciones",
+                "Listo/Susp.", "Bloqueado/Susp."));
+        for (int i = 0; i < computadores.length; i++) {
+            PorComputador c = computadores[i];
+            sb.append(String.format("   %-6s %13d %13d %12d %14d%n", c.nombre, c.suspensiones, c.reactivaciones,
+                    c.listosSuspendidos, c.bloqueadosSuspendidos));
         }
+
+        sb.append("\n Disco y planificación de E/S:\n");
+        if (!disco.hayDisco) {
+            sb.append("   (sin disco configurado)\n");
+        } else {
+            sb.append(String.format("   Política actual: %s%n", disco.politica.getCodigoJson()));
+            sb.append(String.format("   Desplazamiento total del cabezal : %d bloques%n", disco.desplazamientoTotal));
+            sb.append(String.format("   Solicitudes atendidas            : %d%n", disco.solicitudesAtendidas));
+            sb.append(String.format("   Espera promedio en cola de disco : %.1f ciclos%n", disco.esperaPromedio));
+            sb.append("   Atendidas por política           :");
+            for (PoliticaDisco p : PoliticaDisco.values()) {
+                sb.append(String.format("  %s=%d", p.getCodigoJson(), disco.porPolitica[p.ordinal()]));
+            }
+            sb.append('\n');
+        }
+
         return sb.toString();
     }
 }

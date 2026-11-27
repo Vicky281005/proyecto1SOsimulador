@@ -11,7 +11,8 @@ public enum TipoInstruccion {
     SEM_WAIT("Espera Semáforo (Wait)"),
     SEM_SIGNAL("Señal Semáforo (Signal)"),
     PRODUCIR("Producir Elemento"),
-    CONSUMIR("Consumir Elemento");
+    CONSUMIR("Consumir Elemento"),
+    OPERACION_ES("Operación de E/S sobre el sistema de archivos");
 
     private final String etiqueta;
 

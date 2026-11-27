@@ -26,15 +26,29 @@ public class Proyecto1SOsimulador {
             }
         }
 
-        Simulador simulador = EscenarioDemo.crear();
-
         if (modoConsola) {
+            Simulador simulador = EscenarioDemo.crear();
             simulador.ejecutar();
             new ReporteSimulacion(simulador).imprimir();
             return;
         }
 
-        SwingUtilities.invokeLater(() -> new VentanaEstado(simulador).setVisible(true));
+        // Proyecto 2: exige cargar ambos archivos JSON obligatorios antes de iniciar el reloj global
+        Simulador simuladorInicial = crearSimuladorPendienteDeJson();
+
+        SwingUtilities.invokeLater(() -> new VentanaEstado(simuladorInicial).setVisible(true));
+    }
+
+    /**
+     * Crea un simulador base de Proyecto 2 (1 único computador) en espera de que
+     * el usuario cargue ambos archivos JSON obligatorios antes de iniciar el reloj.
+     */
+    public static Simulador crearSimuladorPendienteDeJson() {
+        Simulador simuladorInicial = new Simulador();
+        simuladorInicial.registrarComputador(new nucleo.Computador(
+                1, "PC-1", 1024, planificacion.FabricaPoliticas.crear(enums.PoliticaPlanificacion.FCFS)));
+        simuladorInicial.setRequiereCargaJsonObligatoria(true);
+        return simuladorInicial;
     }
 }
 

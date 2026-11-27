@@ -42,7 +42,7 @@ public class VentanaMetricasPrueba {
             String t = v.getTexto();
             verificar(t.contains("Throughput") && t.contains("Tiempo de respuesta promedio")
                     && t.contains("Deadlines cumplidos") && t.contains("Equidad"), "la ventana muestra las métricas globales");
-            verificar(t.contains("PC-1") && t.contains("Por buffer"), "muestra la tabla por computador y la de buffers");
+            verificar(t.contains("PC-1") && t.contains("Disco y planificación"), "muestra la tabla por computador y la sección del disco");
             v.guardarEn(salida);
             verificar(v.getEstado().contains("guardado"), "avisa que guardó el reporte");
             try {
